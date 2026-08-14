@@ -1,0 +1,72 @@
+# Byte-compiled / optimized / URL-encoded files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node / Frontend
+node_modules/
+dist/
+.next/
+out/
+.parcel-cache/
+.turbo/
+
+# Logs & Storage
+*.log
+logs/
+temp/
+tmp/
+storage/
+output/
+stems/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.midi
+*.mid
+
+# Model Weights & Caches
+models/
+checkpoints/
+.cache/
+hf_cache/
+torch_cache/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
