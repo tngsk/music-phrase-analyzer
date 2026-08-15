@@ -4,7 +4,7 @@ import StemSelector from './components/StemSelector'
 import StemMixer from './components/StemMixer'
 import HarmonyTimeline from './components/HarmonyTimeline'
 import ReportViewer from './components/ReportViewer'
-import { uploadAudio, analyzeAudio, getReport } from './services/api'
+import { uploadAudio, analyzeAudio, reanalyzeHarmony, getReport } from './services/api'
 import { AnalysisResponse } from './types/analysis'
 import { UploadCloud, CheckCircle2, Loader2, Music, Sparkles } from 'lucide-react'
 
@@ -16,12 +16,16 @@ function App() {
   
   const [taskId, setTaskId] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isReanalyzingHarmony, setIsReanalyzingHarmony] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<AnalysisResponse | null>(null)
   const [reportMarkdown, setReportMarkdown] = useState<string>('')
   
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
   const [selectedStems, setSelectedStems] = useState<string[]>([
     "vocals", "bass", "drums", "guitar", "piano", "other"
+  ])
+  const [selectedHarmonicStems, setSelectedHarmonicStems] = useState<string[]>([
+    "bass", "piano", "guitar", "other"
   ])
 
   const processFile = async (file: File) => {
@@ -79,6 +83,26 @@ function App() {
       console.error("Analysis failed", err)
     } finally {
       setIsAnalyzing(false)
+    }
+  }
+
+  const handleHarmonicStemsChange = async (newHarmonicStems: string[]) => {
+    setSelectedHarmonicStems(newHarmonicStems)
+    if (!taskId || !analysisResults) return
+
+    setIsReanalyzingHarmony(true)
+    try {
+      const res = await reanalyzeHarmony(taskId, newHarmonicStems)
+      if (res.harmony) {
+        setAnalysisResults(prev => prev ? {
+          ...prev,
+          harmony: res.harmony
+        } : null)
+      }
+    } catch (err) {
+      console.error("Harmony re-analysis failed:", err)
+    } finally {
+      setIsReanalyzingHarmony(false)
     }
   }
 
@@ -176,10 +200,15 @@ function App() {
               taskId={taskId} 
             />
 
-            {/* Compact Harmony & Progression Timeline */}
+            {/* Interactive Harmony & Progression Timeline with Stem Selection Chips */}
             <HarmonyTimeline 
               chords={analysisResults.harmony?.chords || []}
               progressions={analysisResults.harmony?.progressions || []}
+              keyName={analysisResults.harmony?.key}
+              availableStems={analysisResults.stems || []}
+              selectedHarmonicStems={selectedHarmonicStems}
+              onHarmonicStemsChange={handleHarmonicStemsChange}
+              isReanalyzing={isReanalyzingHarmony}
             />
           </section>
         )}

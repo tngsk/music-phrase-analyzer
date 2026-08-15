@@ -18,7 +18,7 @@ export async function uploadAudio(file: File): Promise<{ file_id: string; filena
   return response.json();
 }
 
-export async function analyzeAudio(request: AnalysisRequest): Promise<{ status: string; task_id: string }> {
+export async function analyzeAudio(request: AnalysisRequest): Promise<{ status: string; task_id: string; results: any; notes: any[]; stems: any[]; all_midi_url: string }> {
   const response = await fetch(`${API_BASE_URL}/analyze/`, {
     method: 'POST',
     headers: {
@@ -29,6 +29,25 @@ export async function analyzeAudio(request: AnalysisRequest): Promise<{ status: 
 
   if (!response.ok) {
     throw new Error('Analysis failed');
+  }
+
+  return response.json();
+}
+
+export async function reanalyzeHarmony(taskId: string, stems: string[]): Promise<{ status: string; harmony: any; selected_stems: string[] }> {
+  const response = await fetch(`${API_BASE_URL}/analyze/harmony`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      task_id: taskId,
+      stems: stems,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Harmony re-analysis failed');
   }
 
   return response.json();

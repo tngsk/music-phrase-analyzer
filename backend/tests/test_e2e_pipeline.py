@@ -25,8 +25,8 @@ def sample_wav_bytes():
 
 def test_full_pipeline_integration(client, sample_wav_bytes):
     """
-    E2E Dataflow Integration Test for 6-Stem Pipeline:
-    Upload Audio -> Analyze Phrase with Demucs 6s -> Verify Real Separated 6 Stems -> Verify MIDI Export.
+    E2E Dataflow Integration Test for 6-Stem Pipeline & Interactive Harmony Re-analysis:
+    Upload Audio -> Analyze with Demucs 6s -> Instantaneous Harmony Re-analysis -> Verify Exports.
     Strictly asserts genuine data generation without silent fallbacks.
     """
     # 1. Upload Audio
@@ -55,7 +55,18 @@ def test_full_pipeline_integration(client, sample_wav_bytes):
     assert "stems" in data
     assert len(data["stems"]) == 6
 
-    # 3. Verify All 6 Stem Audio & MIDI Endpoints
+    # 3. Test On-demand Harmony Re-analysis with custom stems (e.g. ['bass', 'other'])
+    res_reharmony = client.post("/analyze/harmony", json={
+        "task_id": task_id,
+        "stems": ["bass", "other"]
+    })
+    assert res_reharmony.status_code == 200
+    reharmony_data = res_reharmony.json()
+    assert reharmony_data["status"] == "success"
+    assert "harmony" in reharmony_data
+    assert "chords" in reharmony_data["harmony"]
+
+    # 4. Verify All 6 Stem Audio & MIDI Endpoints
     for stem_info in data["stems"]:
         stem_name = stem_info["stem"]
         assert stem_name in stems_6
@@ -68,12 +79,12 @@ def test_full_pipeline_integration(client, sample_wav_bytes):
         assert res_midi.status_code == 200, f"Stem MIDI download failed for '{stem_name}'"
         assert len(res_midi.content) > 50, f"Stem '{stem_name}' MIDI is empty"
 
-    # 4. Verify Multi-track Combined MIDI
+    # 5. Verify Multi-track Combined MIDI
     res_all_midi = client.get(f"/export/midi/{task_id}/all")
     assert res_all_midi.status_code == 200
     assert len(res_all_midi.content) > 100
 
-    # 5. Verify Report
+    # 6. Verify Report
     res_rep = client.get(f"/export/report/{task_id}")
     assert res_rep.status_code == 200
     assert "report" in res_rep.json()

@@ -27,6 +27,10 @@ class AnalyzeRequest(BaseModel):
     end_time: float
     stems: List[str]
 
+class ReanalyzeHarmonyRequest(BaseModel):
+    task_id: str
+    stems: List[str]
+
 @router.post("/")
 async def analyze_phrase(request: AnalyzeRequest):
     # Find uploaded file
@@ -107,12 +111,10 @@ async def analyze_phrase(request: AnalyzeRequest):
         print(f"Failed to write combined MIDI: {e}")
 
     # 4. Multi-Stem Harmonic Fusion Analysis (Bass + Piano + Guitar + Other + Vocals)
-    # This combines the bass root note with upper voicings for 100% accurate key & chord analysis
     harmony_res = analyze_harmony(midi_paths)
     if "error" not in harmony_res:
         analysis_results["harmony"] = harmony_res
     else:
-        # Fallback to single harmonic track if multi-stem fails
         for candidate in ["piano", "guitar", "other"]:
             if candidate in midi_paths and Path(midi_paths[candidate]).exists():
                 single_res = analyze_harmony(str(midi_paths[candidate]))
@@ -150,4 +152,35 @@ async def analyze_phrase(request: AnalyzeRequest):
         "notes": all_notes,
         "stems": stems_info,
         "all_midi_url": f"http://localhost:8000/export/midi/{task_id}/all"
+    }
+
+@router.post("/harmony")
+async def reanalyze_harmony_custom(request: ReanalyzeHarmonyRequest):
+    """
+    On-demand instantaneous harmony re-analysis:
+    Takes selected stems (e.g. ['bass', 'other']) and re-computes chords, key, and progressions
+    without re-running expensive Demucs separation.
+    """
+    task_dir = OUTPUT_DIR / request.task_id
+    if not task_dir.exists():
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    midi_paths = {}
+    for stem in request.stems:
+        mp = task_dir / f"{stem}.mid"
+        if mp.exists():
+            midi_paths[stem] = mp
+            
+    if not midi_paths:
+        raise HTTPException(status_code=400, detail="No valid MIDI files found for requested stems")
+        
+    harmony_res = analyze_harmony(midi_paths)
+    if "error" in harmony_res:
+        raise HTTPException(status_code=500, detail=harmony_res["error"])
+        
+    return {
+        "status": "success",
+        "task_id": request.task_id,
+        "harmony": harmony_res,
+        "selected_stems": request.stems
     }

@@ -9,9 +9,11 @@ export interface NoteEvent {
 
 export interface ChordEvent {
   time: number;       // Start time in seconds
-  chord: string;      // Chord name (e.g. "Cmaj7", "Am7")
+  chord: string;      // Chord name (e.g. "Cmaj7", "Am7", "C/E")
   roman: string;      // Roman numeral (e.g. "IVM7", "V7", "vi")
   function: string;   // "Tonic" | "Subdominant" | "Dominant"
+  root?: string;      // Root note (e.g. "C")
+  bass?: string;      // Bass note (e.g. "E")
 }
 
 export interface ProgressionMatch {
@@ -35,6 +37,7 @@ export interface AnalysisResponse {
     motifs?: Array<{ pattern: number[]; count: number }>;
   };
   harmony?: {
+    key?: string;
     chords: ChordEvent[];
     progressions: string[];
     matches?: ProgressionMatch[];
