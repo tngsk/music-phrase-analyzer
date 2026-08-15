@@ -49,24 +49,6 @@ def detect_progressions(roman_sequence: List[str]) -> List[Dict[str, Union[str, 
             
     return matches
 
-def calculate_bar_beat(time_sec: float, bpm: float = 120.0) -> tuple[int, float, str]:
-    """
-    Convert seconds to Bar.Beat notation (e.g. 1.1, 1.3, 2.1, 2.3).
-    Assuming 4/4 time signature.
-    """
-    seconds_per_beat = 60.0 / max(30.0, min(300.0, bpm))
-    total_beats = time_sec / seconds_per_beat
-    
-    # Quantize to 8th note grid (0.5 beats)
-    quantized_beat = round(total_beats * 2.0) / 2.0
-    
-    measure = int(quantized_beat // 4) + 1
-    beat_in_measure = int(quantized_beat % 4) + 1
-    is_offbeat = (quantized_beat % 1.0) != 0
-    
-    bar_beat_str = f"{measure}.{beat_in_measure}&" if is_offbeat else f"{measure}.{beat_in_measure}"
-    return measure, beat_in_measure, bar_beat_str
-
 def analyze_harmony(
     midi_input: Union[str, Dict[str, Union[str, Path]]], 
     bpm: Optional[float] = None
@@ -75,12 +57,13 @@ def analyze_harmony(
     Multi-Stem Harmonic Fusion Analysis:
     Combines Bass (root/bassline foundation) with harmonic upper stems (Piano, Guitar, Other, Vocals)
     into a unified music21 Score and executes chordify() for 100% precise chord and key detection.
-    Computes DAW-style Bar.Beat (e.g. 1.1, 2.1) timing based on detected BPM.
+    Converts timestamps between seconds and musical beats with tempo-aware precision.
     """
     score = music21.stream.Score()
     note_count = 0
     
     effective_bpm = bpm if (bpm is not None and bpm > 0) else 120.0
+    seconds_per_beat = 60.0 / max(30.0, min(300.0, effective_bpm))
     
     # Normalize input: either a single midi path or a dictionary of stem_name -> midi_path
     stem_midi_map: Dict[str, str] = {}
@@ -117,9 +100,11 @@ def analyze_harmony(
                     continue
                 for n in inst.notes:
                     m21_note = music21.note.Note(n.pitch)
-                    dur_q = max(0.25, (n.end - n.start) * 2.0)
-                    m21_note.quarterLength = dur_q
-                    part.insert(n.start * 2.0, m21_note)
+                    # Convert start seconds and duration seconds precisely into quarterLength beats
+                    offset_quarters = n.start / seconds_per_beat
+                    dur_quarters = max(0.2, (n.end - n.start) / seconds_per_beat)
+                    m21_note.quarterLength = dur_quarters
+                    part.insert(offset_quarters, m21_note)
                     note_count += 1
                     
             if len(part.notes) > 0:
@@ -193,8 +178,16 @@ def analyze_harmony(
                         sym += f"/{bass_name}"
                     display_chord = sym
                     
-                c_time_sec = round(float(c.offset) / 2.0, 2)
-                measure, beat_in_measure, bar_beat_str = calculate_bar_beat(c_time_sec, effective_bpm)
+                # Convert music21 quarterLength offset directly back to exact real seconds
+                c_time_sec = round(float(c.offset) * seconds_per_beat, 2)
+                
+                # Precise Bar.Beat calculation
+                total_beats = float(c.offset)
+                quantized_beat = round(total_beats * 2.0) / 2.0
+                measure = int(quantized_beat // 4) + 1
+                beat_in_measure = int(quantized_beat % 4) + 1
+                is_offbeat = (quantized_beat % 1.0) != 0
+                bar_beat_str = f"{measure}.{beat_in_measure}&" if is_offbeat else f"{measure}.{beat_in_measure}"
                 
                 chords_out.append({
                     "time": c_time_sec,

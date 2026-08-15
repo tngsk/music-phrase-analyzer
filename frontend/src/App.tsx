@@ -21,6 +21,7 @@ function App() {
   const [reportMarkdown, setReportMarkdown] = useState<string>('')
   
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
+  const [analyzedRange, setAnalyzedRange] = useState<{ start: number; end: number }>({ start: 0, end: 10 })
   const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
 
@@ -66,11 +67,17 @@ function App() {
     if (!fileId) return
     setIsAnalyzing(true)
     setActiveChordIndex(null)
+    
+    // Lock the analyzed range to prevent misalignment if timeline region is moved later
+    const currentStart = timeRange.start
+    const currentEnd = timeRange.end
+    setAnalyzedRange({ start: currentStart, end: currentEnd })
+
     try {
       const res: any = await analyzeAudio({
         file_id: fileId,
-        start_time: timeRange.start,
-        end_time: timeRange.end,
+        start_time: currentStart,
+        end_time: currentEnd,
         stems: selectedStems
       })
       setTaskId(res.task_id)
@@ -114,9 +121,9 @@ function App() {
 
   const handleChordClick = (chordStartRel: number, chordEndRel: number, index: number) => {
     setActiveChordIndex(index)
-    // Map relative chord timestamp to original audio timeline absolute range
-    const absStart = timeRange.start + chordStartRel
-    const absEnd = timeRange.start + chordEndRel
+    // Map relative chord timestamp to original audio timeline absolute range based on locked analyzedRange
+    const absStart = analyzedRange.start + chordStartRel
+    const absEnd = analyzedRange.start + chordEndRel
 
     setTargetRange({
       start: Math.round(absStart * 100) / 100,
@@ -197,7 +204,7 @@ function App() {
                  isReanalyzing={isReanalyzingHarmony}
                  onChordClick={handleChordClick}
                  activeChordIndex={activeChordIndex}
-                 totalDuration={timeRange.end - timeRange.start}
+                 totalDuration={analyzedRange.end - analyzedRange.start}
                />
              </div>
            )}
