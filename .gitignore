@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 
 # C extensions
 *.so
@@ -43,7 +44,11 @@ out/
 .parcel-cache/
 .turbo/
 
-# Logs & Storage
+# Audio Data & Temporary Outputs
+backend/outputs/*
+!backend/outputs/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
 *.log
 logs/
 temp/
