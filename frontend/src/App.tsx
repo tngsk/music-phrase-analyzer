@@ -85,7 +85,7 @@ function App() {
         {analysisResults && (
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold border-b border-gray-700 pb-2">Analysis Results</h2>
-            <PianoRoll />
+            <PianoRoll notes={analysisResults.notes} />
             <HarmonyTimeline chords={analysisResults.harmony?.chords || []} />
             <TheoryDashboard results={analysisResults} />
           </section>
