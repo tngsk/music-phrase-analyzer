@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import AudioTimeline from './components/AudioTimeline'
 import StemSelector from './components/StemSelector'
 import StemMixer from './components/StemMixer'
@@ -22,7 +22,7 @@ function App() {
   
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
   const [analyzedRange, setAnalyzedRange] = useState<{ start: number; end: number }>({ start: 0, end: 10 })
-  const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
+  const [targetRange, setTargetRange] = useState<{ id: number; start: number; end: number; autoPlay?: boolean } | null>(null)
   const [activeSubRegion, setActiveSubRegion] = useState<AudioSubRegion | null>(null)
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
 
@@ -64,6 +64,10 @@ function App() {
       processFile(e.target.files[0])
     }
   }
+
+  const handleRangeChange = useCallback((start: number, end: number) => {
+    setTimeRange({ start, end })
+  }, [])
 
   const handleAnalyze = async () => {
     if (!fileId) return
@@ -138,8 +142,9 @@ function App() {
 
     setActiveSubRegion(subReg)
     
-    // Play the original audio timeline for this chord region
+    // Play the original audio timeline for this chord region with unique trigger ID
     setTargetRange({
+      id: Date.now(),
       start: subReg.startAbs,
       end: subReg.endAbs,
       autoPlay: true
@@ -200,7 +205,7 @@ function App() {
            <AudioTimeline 
              audioUrl={audioUrl || undefined}
              onFileSelect={processFile}
-             onRangeChange={(start, end) => setTimeRange({ start, end })} 
+             onRangeChange={handleRangeChange} 
              targetRange={targetRange}
            />
 

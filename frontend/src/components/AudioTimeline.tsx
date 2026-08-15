@@ -8,7 +8,7 @@ interface Props {
   audioUrl?: string;
   onFileSelect?: (file: File) => void;
   onRangeChange?: (start: number, end: number) => void;
-  targetRange?: { start: number; end: number; autoPlay?: boolean } | null;
+  targetRange?: { id?: number; start: number; end: number; autoPlay?: boolean } | null;
 }
 
 export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, targetRange }: Props) {
@@ -19,6 +19,7 @@ export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, t
   const wavesurfer = useRef<WaveSurfer | null>(null)
   const regionsPlugin = useRef<RegionsPlugin | null>(null)
   const activeRegion = useRef<Region | null>(null)
+  const prevHandledTargetId = useRef<number | string | null>(null)
 
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [range, setRange] = useState({ start: 0, end: 10 })
@@ -88,13 +89,19 @@ export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, t
   useEffect(() => {
     if (!targetRange || !wavesurfer.current || !regionsPlugin.current || !isLoaded) return;
 
+    // Prevent infinite re-trigger loop on React re-render
+    const currentId = targetRange.id !== undefined ? targetRange.id : `${targetRange.start}-${targetRange.end}`;
+    if (prevHandledTargetId.current === currentId) {
+      return;
+    }
+    prevHandledTargetId.current = currentId;
+
     const dur = duration || wavesurfer.current.getDuration() || 1;
     const start = Math.max(0, Math.min(targetRange.start, dur));
     const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
 
     rangeRef.current = { start, end };
     setRange({ start, end });
-    if (onRangeChange) onRangeChange(start, end);
 
     if (activeRegion.current) {
       activeRegion.current.setOptions({ start, end });
@@ -115,7 +122,7 @@ export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, t
         setIsPlaying(true);
       }).catch(console.error);
     }
-  }, [targetRange, duration, isLoaded, onRangeChange]);
+  }, [targetRange, duration, isLoaded]);
 
   // Initialize WaveSurfer
   useEffect(() => {
@@ -227,6 +234,7 @@ export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, t
     if (wavesurfer.current && audioUrl) {
       setIsLoaded(false);
       setIsPlaying(false);
+      prevHandledTargetId.current = null;
       wavesurfer.current.load(audioUrl);
     }
   }, [audioUrl]);
