@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import { StemInfo } from '../types/analysis'
 import { Play, Pause, Square, Repeat, Download, Volume2, Music2, Layers } from 'lucide-react'
@@ -97,16 +97,29 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
     isLoopingRef.current = isLooping;
   }, [isLooping]);
 
-  // Handle active playing stem state from parent (solo playback mode)
+  const onPlayRef = useRef(onPlay);
   useEffect(() => {
-    if (activePlayingStem !== stem.stem && isPlaying && wavesurfer.current) {
-      wavesurfer.current.pause();
+    onPlayRef.current = onPlay;
+  }, [onPlay]);
+
+  const onPauseRef = useRef(onPause);
+  useEffect(() => {
+    onPauseRef.current = onPause;
+  }, [onPause]);
+
+  // Solo playback mode: Pause if another stem started playing
+  useEffect(() => {
+    if (activePlayingStem !== stem.stem && isPlaying) {
+      if (wavesurfer.current) {
+        wavesurfer.current.pause();
+      }
       setIsPlaying(false);
     }
   }, [activePlayingStem, isPlaying, stem.stem]);
 
+  // Initialize WaveSurfer instance ONCE per stem audio URL
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !stem.audio_url) return;
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
@@ -118,15 +131,17 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
       barWidth: 2,
       barGap: 1,
       barRadius: 2,
+      url: stem.audio_url,
     });
     wavesurfer.current = ws;
-
-    ws.load(stem.audio_url);
 
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoaded(true);
     });
+
+    ws.on('play', () => setIsPlaying(true));
+    ws.on('pause', () => setIsPlaying(false));
 
     ws.on('timeupdate', (time) => {
       setCurrentTime(time);
@@ -138,7 +153,7 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
         ws.play().catch(console.error);
       } else {
         setIsPlaying(false);
-        onPause();
+        onPauseRef.current();
       }
     });
 
@@ -146,7 +161,7 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
       ws.destroy();
       wavesurfer.current = null;
     };
-  }, [stem.audio_url, cfg.waveColor, cfg.progressColor, onPause]);
+  }, [stem.audio_url, cfg.waveColor, cfg.progressColor]);
 
   const handleTogglePlay = async () => {
     if (!wavesurfer.current || !isLoaded) return;
@@ -154,9 +169,9 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
     if (isPlaying) {
       wavesurfer.current.pause();
       setIsPlaying(false);
-      onPause();
+      onPauseRef.current();
     } else {
-      onPlay(stem.stem);
+      onPlayRef.current(stem.stem);
       try {
         await wavesurfer.current.play();
         setIsPlaying(true);
@@ -171,7 +186,7 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
     wavesurfer.current.pause();
     wavesurfer.current.setTime(0);
     setIsPlaying(false);
-    onPause();
+    onPauseRef.current();
   };
 
   const toggleLoop = () => {
@@ -284,6 +299,14 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
 export default function StemMixer({ stems, taskId }: Props) {
   const [activePlayingStem, setActivePlayingStem] = useState<string | null>(null);
 
+  const handlePlay = useCallback((stemName: string) => {
+    setActivePlayingStem(stemName);
+  }, []);
+
+  const handlePause = useCallback(() => {
+    setActivePlayingStem(null);
+  }, []);
+
   const handleDownload = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
@@ -340,8 +363,8 @@ export default function StemMixer({ stems, taskId }: Props) {
             key={s.stem}
             stem={s}
             activePlayingStem={activePlayingStem}
-            onPlay={(stemName) => setActivePlayingStem(stemName)}
-            onPause={() => setActivePlayingStem(null)}
+            onPlay={handlePlay}
+            onPause={handlePause}
           />
         ))}
       </div>
