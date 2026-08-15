@@ -130,13 +130,13 @@ export default function HarmonyTimeline({
         </div>
       </div>
 
-      {/* Chords Sequence Ribbon with Bar.Beat Timing */}
+      {/* Chords Sequence Grid Layout (縦方向に美しく折り返し展開) */}
       {chords.length === 0 ? (
         <div className="text-xs text-gray-400 py-4 text-center bg-gray-900/50 rounded-lg border border-gray-800">
           選択されたパートから和音データが検出されませんでした。上のチップから別のパート（Bass, Other等）を追加してみてください。
         </div>
       ) : (
-        <div className="flex gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5 pt-1">
           {chords.map((chord, i) => {
             const fn = FUNCTION_BADGES[chord.function] || {
               label: chord.function ? chord.function.charAt(0) : '-',
@@ -151,15 +151,15 @@ export default function HarmonyTimeline({
             return (
               <div
                 key={i}
-                className={`flex-shrink-0 flex flex-col items-center justify-between px-3.5 py-2.5 rounded-lg border transition min-w-[82px] shadow-sm ${
+                className={`flex flex-col items-center justify-between px-2.5 py-2.5 rounded-lg border transition shadow-sm ${
                   isDownbeat 
-                    ? 'bg-gray-900 border-purple-500/50 hover:border-purple-400' 
+                    ? 'bg-gray-900 border-purple-500/50 hover:border-purple-400 ring-1 ring-purple-500/20' 
                     : 'bg-gray-900/90 border-gray-700/80 hover:bg-gray-750'
                 }`}
               >
                 {/* Bar.Beat Timing Badge */}
-                <div className="flex flex-col items-center mb-1">
-                  <span className={`text-[11px] font-mono font-bold ${isDownbeat ? 'text-purple-300' : 'text-gray-300'}`}>
+                <div className="flex flex-col items-center mb-1 text-center">
+                  <span className={`text-[11px] font-mono font-bold tracking-tight ${isDownbeat ? 'text-purple-300' : 'text-gray-300'}`}>
                     {displayBeat}
                   </span>
                   <span className="text-[9px] font-mono text-gray-500">
@@ -168,12 +168,12 @@ export default function HarmonyTimeline({
                 </div>
 
                 {/* Chord Name (with Slash Chord support) */}
-                <span className="text-sm font-bold text-white tracking-wide my-0.5">
+                <span className="text-sm font-bold text-white tracking-wide my-1 text-center break-words">
                   {chord.chord}
                 </span>
 
                 {/* Roman Numeral & Function Abbreviation */}
-                <div className="flex items-center gap-1 mt-1.5">
+                <div className="flex items-center justify-center gap-1 mt-1">
                   <span className="text-[11px] font-mono text-gray-300 font-medium">
                     {chord.roman || '-'}
                   </span>
