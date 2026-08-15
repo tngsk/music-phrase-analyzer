@@ -1,6 +1,15 @@
 # Project Rules: music-phrase-analyzer
 
-## 1. Git & Jules Execution Rules
+## 1. Quality, Testing & Fail-Fast Principles (最重要)
+- **No Silent Fallback (サイレント・フォールバックの厳禁 / Fail Fast 原則)**:
+  - 外部ツール（Demucs、librosa、music21 等）の実行失敗時に、例外を握りつぶしてダミーデータや元ファイルをそのままコピーするような「偽装フォールバック」を**全面禁止**する。
+  - 異常や処理失敗が発生した場合は、即座に明確な例外（`RuntimeError`, `HTTPException(500)`）を発生させて原因を表面化（Fail Fast）させること。
+- **Real Dataflow & Integration Verification (実データフロー結合テストの必須化)**:
+  - 単体テスト（pytest）では「ファイルが存在するか（`exists()`）」や「エラーが出ないか」だけの浅いテストを禁止し、「分離された音響特徴の違い」「生成されたMIDIノートのピッチ精度」など**実態を検証する厳密なアサーション**を行うこと。
+  - バックエンドは `FastAPI TestClient` を用いた `Upload ──► Analyze ──► Export` の一気通貫 E2E パイプラインテストを必ずパスさせること。
+  - フロントエンドは `npm run build`（型チェック）のみに依存せず、親から子への Props 伝達やイベントハンドラが実際にデータを受け渡しているかを結合レベルで検証すること。
+
+## 2. Git & Jules Execution Rules
 - **VCS & Git Operations**:
   - `git commit`, `git push`, `git fetch`, `git pull`, `git checkout`, `git apply`, `jules remote pull` などのGit/VCS操作を実行する際は、サンドボックスによる `.git/index.lock` や `~/.gitignore_global` のアクセス拒否（`Operation not permitted`）を回避するため、適切な実行権限（BypassSandbox）で一括実行すること。
 - **No Manual File Re-creation (アンチパターンの厳禁)**:
@@ -10,7 +19,7 @@
 - **Jules Orchestration**:
   - Jules へのタスク発注時は、`.agents/skills/jules-orchestrator/SKILL.md` に従い、マイクロタスク分割と並列ディスパッチを活用すること。
 
-## 2. Privacy & Hybrid LLM Execution Policy
+## 3. Privacy & Hybrid LLM Execution Policy
 - **Local LLM Boundary (Apple M2)**:
   - ローカルLLM（Ollama等）は速度目的ではなく、**「機密情報・個人情報・未発表/著作権音源データ・プライバシー保護（サニタイズ/マスキング）」** に限定して使用すること。
   - 機密性の高い楽曲分析ノート生成や個人情報を含むデータの要約は、外部クラウドに送信せずローカルLLMで完結させること。
