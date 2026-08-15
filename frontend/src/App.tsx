@@ -3,6 +3,7 @@ import AudioTimeline from './components/AudioTimeline'
 import StemSelector from './components/StemSelector'
 import PlayerControls from './components/PlayerControls'
 import PianoRoll from './components/PianoRoll'
+import StemMixer from './components/StemMixer'
 import HarmonyTimeline from './components/HarmonyTimeline'
 import TheoryDashboard from './components/TheoryDashboard'
 import ReportViewer from './components/ReportViewer'
@@ -58,7 +59,10 @@ function App() {
       setTaskId(res.task_id)
       setAnalysisResults({
         ...res.results,
-        notes: res.notes || []
+        notes: res.notes || [],
+        stems: res.stems || [],
+        all_midi_url: res.all_midi_url,
+        task_id: res.task_id
       })
       
       const reportRes = await getReport(res.task_id)
@@ -150,9 +154,23 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-6 animate-fade-in">
-            <h2 className="text-2xl font-semibold border-b border-gray-700 pb-2 text-white">Analysis Results</h2>
+            <h2 className="text-2xl font-semibold border-b border-gray-700 pb-2 text-white flex items-center gap-2">
+              <span>Analysis & Separation Results</span>
+            </h2>
+            
+            {/* Stem Audio Mixer & Multi-track MIDI Download */}
+            <StemMixer 
+              stems={analysisResults.stems || []} 
+              taskId={taskId} 
+            />
+
+            {/* Dynamic Interactive Piano Roll */}
             <PianoRoll notes={analysisResults.notes} />
+
+            {/* Harmony & Progression Timeline */}
             <HarmonyTimeline chords={analysisResults.harmony?.chords || []} />
+
+            {/* Theory Metrics & Summary */}
             <TheoryDashboard results={analysisResults} />
           </section>
         )}

@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 import os
 import uuid
 import json
+import pretty_midi
 
 from app.config import UPLOAD_DIR, OUTPUT_DIR
 from app.services import (
@@ -58,17 +59,34 @@ async def analyze_phrase(request: AnalyzeRequest):
 
     analysis_results = {}
     all_notes = []
+    stems_info = []
 
     # 3. Process each stem
     midi_paths = {}
     melody_results = {}
     harmony_results = {}
+    combined_pm = pretty_midi.PrettyMIDI()
     
     for stem, stem_path in separated_stems.items():
         midi_path = task_dir / f"{stem}.mid"
         notes = run_audio_to_midi(stem_path, midi_path, stem_name=stem)
         all_notes.extend(notes)
         midi_paths[stem] = midi_path
+        
+        # Load stem midi into multi-track combined MIDI
+        try:
+            stem_pm = pretty_midi.PrettyMIDI(str(midi_path))
+            for inst in stem_pm.instruments:
+                combined_pm.instruments.append(inst)
+        except Exception:
+            pass
+
+        stems_info.append({
+            "stem": stem,
+            "audio_url": f"http://localhost:8000/export/audio/{task_id}/{stem}",
+            "midi_url": f"http://localhost:8000/export/midi/{task_id}/{stem}",
+            "note_count": len(notes)
+        })
         
         if stem in ["other", "vocals", "piano", "guitar"]:
             m_res = analyze_melody(str(midi_path))
@@ -78,6 +96,12 @@ async def analyze_phrase(request: AnalyzeRequest):
             h_res = analyze_harmony(str(midi_path))
             if "error" not in h_res:
                 harmony_results[stem] = h_res
+
+    # Save multi-track combined MIDI
+    try:
+        combined_pm.write(str(task_dir / "all_stems.mid"))
+    except Exception:
+        pass
 
     # 4. Global analysis (rhythm, timbre on sliced audio)
     rhythm_res = analyze_rhythm(str(sliced_audio_path))
@@ -106,5 +130,7 @@ async def analyze_phrase(request: AnalyzeRequest):
         "status": "completed", 
         "task_id": task_id,
         "results": analysis_results,
-        "notes": all_notes
+        "notes": all_notes,
+        "stems": stems_info,
+        "all_midi_url": f"http://localhost:8000/export/midi/{task_id}/all"
     }

@@ -4,7 +4,7 @@ export interface NoteEvent {
   start: number;      // Start time in seconds (relative to clip)
   duration: number;   // Duration in seconds
   velocity: number;   // Velocity 1-127
-  stem?: string;      // Stem name ("vocals", "bass", "other", etc.)
+  stem?: string;      // Stem name ("vocals", "bass", "drums", "other", etc.)
 }
 
 export interface ChordEvent {
@@ -15,10 +15,17 @@ export interface ChordEvent {
 }
 
 export interface ProgressionMatch {
-  name: string;        // e.g. "王道進行 (Royal Road)", "丸サ進行 (Just The Two Of Us)"
+  name: string;        // e.g. "王道進行", "丸サ進行"
   pattern: string;     // e.g. "IV - V - iii - vi"
   confidence: number;  // 0.0 - 1.0
   description?: string;
+}
+
+export interface StemInfo {
+  stem: string;
+  audio_url: string;
+  midi_url: string;
+  note_count: number;
 }
 
 export interface AnalysisResponse {
@@ -31,6 +38,7 @@ export interface AnalysisResponse {
     chords: ChordEvent[];
     progressions: string[];
     matches?: ProgressionMatch[];
+    detected_patterns?: Array<{ name: string; confidence: number }>;
   };
   rhythm?: {
     bpm: number;
@@ -44,7 +52,10 @@ export interface AnalysisResponse {
     mfcc_means?: number[];
     rms_mean: number;
   };
-  notes?: NoteEvent[]; // Notes for Piano Roll visualization
+  notes?: NoteEvent[];
+  stems?: StemInfo[];
+  all_midi_url?: string;
+  task_id?: string;
 }
 
 export interface AnalysisRequest {
