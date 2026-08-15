@@ -57,6 +57,7 @@ async def analyze_phrase(request: AnalyzeRequest):
     separated_stems = run_demucs_separation(sliced_audio_path, stem_dir, stems_to_separate)
 
     analysis_results = {}
+    all_notes = []
 
     # 3. Process each stem
     midi_paths = {}
@@ -65,7 +66,8 @@ async def analyze_phrase(request: AnalyzeRequest):
     
     for stem, stem_path in separated_stems.items():
         midi_path = task_dir / f"{stem}.mid"
-        run_audio_to_midi(stem_path, midi_path, stem_name=stem)
+        notes = run_audio_to_midi(stem_path, midi_path, stem_name=stem)
+        all_notes.extend(notes)
         midi_paths[stem] = midi_path
         
         if stem in ["other", "vocals", "piano", "guitar"]:
@@ -103,5 +105,6 @@ async def analyze_phrase(request: AnalyzeRequest):
     return {
         "status": "completed", 
         "task_id": task_id,
-        "results": analysis_results
+        "results": analysis_results,
+        "notes": all_notes
     }
