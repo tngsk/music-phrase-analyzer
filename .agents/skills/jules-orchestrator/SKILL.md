@@ -25,7 +25,7 @@ This skill guides the agent in orchestrating development tasks with **Google Jul
    - 各Julesセッションには、そのタスクに関連する2〜4ファイルと単体テストのみに集中させることで、コード消失やデバッグ迷走を防ぐ。
 5. **Clean Integration & Never Manual File-by-File Copying (パッチの安全な一括取り込み)**:
    - Julesセッション完了時の成果物取り込みは、**手動で個別ファイルを1つずつ再作成してはならない（アンチパターン）**。
-   - 必ず `jules remote pull <sessionId>` または一括パッチ適用（`git apply`）を用いる。
+   - 必ず `jules remote pull --session <sessionId> --apply` を用いて一発適用する。
 
 ---
 
@@ -77,12 +77,11 @@ Julesが問い合わせ（500エラーやタイムアウトなど）をしてき
 > `jules_pull_session` の diff 出力を読み取って、ローカルに1ファイルずつ手動で `write_to_file` してはならない。
 
 #### 正しい取り込み手順:
-1. ユーザーにターミナルでの取り込みコマンドを提示する：
+1. ターミナルで以下のコマンドを実行して一括適用する：
    ```bash
-   jules remote pull <sessionId>
+   jules remote pull --session <sessionId> --apply
    ```
-2. または、取得した diff パッチを `git apply` / `git merge` で一括適用する。
-3. ローカルでテストおよびビルドを実行し、整合性を検証する：
+2. ローカルでテストおよびビルドを実行し、整合性を検証する：
    ```bash
    pytest
    npm run build
@@ -94,4 +93,4 @@ Julesが問い合わせ（500エラーやタイムアウトなど）をしてき
 - [ ] 機密情報・著作権音源データがクラウドに流出しない設計になっているか？
 - [ ] 結合型定義（Contract）が先にリポジトリに存在するか？
 - [ ] 各Julesタスクは独立してテスト可能か？
-- [ ] 完了後の成果物取り込みに `jules remote pull` を使用したか？
+- [ ] 完了後の成果物取り込みに `jules remote pull --session <sessionId> --apply` を使用したか？
