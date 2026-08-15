@@ -2,20 +2,23 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin, { Region } from 'wavesurfer.js/dist/plugins/regions.js'
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js'
-import { Play, Pause, Square, Repeat, Volume2 } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Volume2, UploadCloud } from 'lucide-react'
 
 interface Props {
   onRangeChange?: (start: number, end: number) => void;
   audioUrl?: string;
+  onFileSelect?: (file: File) => void;
 }
 
-export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
+export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const wavesurfer = useRef<WaveSurfer | null>(null)
   const regionsPlugin = useRef<RegionsPlugin | null>(null)
   const activeRegion = useRef<Region | null>(null)
   
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [range, setRange] = useState({ start: 0, end: 10 })
   const rangeRef = useRef(range)
   useEffect(() => {
@@ -43,6 +46,43 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
   useEffect(() => {
     handleRangeChangeRef.current = handleRangeChange;
   }, [handleRangeChange]);
+
+  // Drag & Drop Event Handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('audio/') || file.name.match(/\.(wav|mp3|flac|m4a|ogg)$/i)) {
+        if (onFileSelect) {
+          onFileSelect(file);
+        }
+      }
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (onFileSelect) {
+        onFileSelect(file);
+      }
+    }
+  };
 
   // Initialize WaveSurfer instance
   useEffect(() => {
@@ -169,7 +209,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
     const end = range.end;
     const currentTime = wavesurfer.current.getCurrentTime();
 
-    // If playhead is outside region, move to region start
     if (currentTime < start || currentTime >= end) {
       wavesurfer.current.setTime(start);
     }
@@ -218,20 +257,57 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
   };
 
   return (
-    <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md">
+    <div 
+      className={`bg-gray-800 p-5 rounded-xl border transition shadow-md ${
+        isDraggingFile 
+          ? 'border-blue-500 ring-2 ring-blue-500/50 bg-gray-800/95' 
+          : 'border-gray-700'
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Hidden file input for click-to-upload */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileInputChange} 
+        accept="audio/*" 
+        className="hidden" 
+      />
+
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-          <Volume2 size={20} className="text-blue-400" />
+        <h2 className="text-base font-semibold text-white flex items-center gap-2">
+          <Volume2 size={18} className="text-blue-400" />
           <span>Audio Timeline & Phrase Selector</span>
         </h2>
-        <span className="text-sm font-mono px-3 py-1 bg-gray-900 text-blue-300 rounded border border-gray-700">
-          Selected: {range.start.toFixed(2)}s – {range.end.toFixed(2)}s ({(range.end - range.start).toFixed(2)}s)
-        </span>
+        {audioUrl && (
+          <span className="text-xs font-mono px-2.5 py-1 bg-gray-900 text-blue-300 rounded border border-gray-700">
+            Selected: {range.start.toFixed(2)}s – {range.end.toFixed(2)}s ({(range.end - range.start).toFixed(2)}s)
+          </span>
+        )}
       </div>
       
       {!audioUrl && (
-        <div className="text-center py-8 bg-gray-900/60 rounded-lg border-2 border-dashed border-gray-700 text-gray-400 text-sm">
-          ⬆️ Please upload an audio file above to view waveform and select phrase
+        <div 
+          onClick={() => fileInputRef.current?.click()}
+          className={`cursor-pointer text-center py-12 px-4 rounded-xl border-2 border-dashed transition flex flex-col items-center justify-center gap-3 ${
+            isDraggingFile 
+              ? 'border-blue-400 bg-blue-900/20 text-blue-200 scale-[1.01]' 
+              : 'border-gray-600 hover:border-gray-500 bg-gray-900/60 hover:bg-gray-900/80 text-gray-400'
+          }`}
+        >
+          <div className="p-3 bg-gray-800 rounded-full border border-gray-700 text-blue-400 shadow-inner">
+            <UploadCloud size={28} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-gray-200">
+              {isDraggingFile ? 'ここに音声をドロップ！' : '音声ファイルをドラッグ＆ドロップ、またはクリックして選択'}
+            </div>
+            <div className="text-xs text-gray-500 mt-1 font-mono">
+              WAV, MP3, FLAC, M4A, OGG 対応
+            </div>
+          </div>
         </div>
       )}
 
@@ -244,6 +320,15 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
           ref={timelineRef} 
           className="w-full bg-gray-950 rounded-b overflow-hidden border border-gray-700" 
         />
+        
+        {/* Overlay when dragging over existing waveform */}
+        {isDraggingFile && (
+          <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-xs border-2 border-blue-500 border-dashed rounded flex items-center justify-center pointer-events-none z-20">
+            <span className="text-sm font-semibold text-white bg-blue-600 px-4 py-1.5 rounded-full shadow-lg">
+              新しい音声をドロップして差し替え
+            </span>
+          </div>
+        )}
       </div>
       
       {audioUrl && (
@@ -252,42 +337,42 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
             <button 
               onClick={handlePlayRegion}
               disabled={!isLoaded}
-              className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-sm font-medium shadow ${
+              className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-xs font-semibold shadow ${
                 isPlaying 
                   ? 'bg-amber-600 hover:bg-amber-500 text-white' 
                   : 'bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-700'
               }`}
             >
-              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+              {isPlaying ? <Pause size={15} /> : <Play size={15} />}
               {isPlaying ? 'Pause' : 'Play Region'}
             </button>
             
             <button 
               onClick={handleStop}
               disabled={!isLoaded}
-              className="flex items-center gap-1.5 hover:bg-gray-700 transition px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-gray-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 hover:bg-gray-700 transition px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 disabled:opacity-50"
             >
-              <Square size={16} /> Stop
+              <Square size={14} /> Stop
             </button>
             
             <button 
               onClick={toggleLoop}
               disabled={!isLoaded}
-              className={`flex items-center gap-1.5 transition px-3.5 py-2 rounded-lg text-sm font-medium border ${
+              className={`flex items-center gap-1.5 transition px-3 py-2 rounded-lg text-xs font-medium border ${
                 isLooping 
                   ? 'bg-green-600/30 border-green-500 text-green-300' 
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
               }`}
             >
-              <Repeat size={16} /> Loop Region {isLooping ? '(ON)' : ''}
+              <Repeat size={14} /> Loop Region {isLooping ? '(ON)' : ''}
             </button>
           </div>
 
-          <div className="flex gap-2 text-xs text-gray-400 items-center">
-             <span>Quick Presets:</span>
-             <button onClick={() => setFixedRange(0, 5)} className="hover:text-white px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded transition">0–5s</button>
-             <button onClick={() => setFixedRange(0, 10)} className="hover:text-white px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded transition">0–10s</button>
-             <button onClick={() => setFixedRange(5, 15)} className="hover:text-white px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded transition">5–15s</button>
+          <div className="flex gap-1.5 text-xs text-gray-400 items-center">
+             <span className="text-[11px]">Presets:</span>
+             <button onClick={() => setFixedRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">0–5s</button>
+             <button onClick={() => setFixedRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">0–10s</button>
+             <button onClick={() => setFixedRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">5–15s</button>
           </div>
         </div>
       )}

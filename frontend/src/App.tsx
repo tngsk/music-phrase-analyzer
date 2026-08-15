@@ -22,24 +22,32 @@ function App() {
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
   const [selectedStems, setSelectedStems] = useState<string[]>(["vocals", "bass", "drums", "other"])
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processFile = async (file: File) => {
+    setFileName(file.name)
+    
+    // Create local object URL for instant zero-latency waveform rendering & preview
+    const localUrl = URL.createObjectURL(file)
+    setAudioUrl(localUrl)
+    
+    // Reset previous analysis
+    setTaskId(null)
+    setAnalysisResults(null)
+    setReportMarkdown('')
+    
+    setIsUploading(true)
+    try {
+      const res = await uploadAudio(file)
+      setFileId(res.file_id)
+    } catch (err) {
+      console.error("Upload failed", err)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      setFileName(file.name)
-      
-      // Create local object URL for instant zero-latency waveform rendering & preview
-      const localUrl = URL.createObjectURL(file)
-      setAudioUrl(localUrl)
-      
-      setIsUploading(true)
-      try {
-        const res = await uploadAudio(file)
-        setFileId(res.file_id)
-      } catch (err) {
-        console.error("Upload failed", err)
-      } finally {
-        setIsUploading(false)
-      }
+      processFile(e.target.files[0])
     }
   }
 
@@ -81,7 +89,7 @@ function App() {
             <span>Music Phrase Analyzer</span>
           </h1>
           <p className="text-gray-400 mt-0.5 text-xs">
-            音源をアップロードし、気になるフレーズを選択して、パート分離（Demucs）＋ 和声解析 ＋ MIDI抽出。
+            音源をドラッグ＆ドロップし、気になるフレーズを選択してパート分離（Demucs）＋ 和声解析 ＋ MIDI抽出。
           </p>
         </div>
         
@@ -122,9 +130,10 @@ function App() {
 
       <main className="space-y-6">
         <section className="space-y-4">
-           {/* Audio Timeline with Wavesurfer Waveform & Drag Region */}
+           {/* Audio Timeline with Drag & Drop, Waveform, and Drag Region */}
            <AudioTimeline 
              audioUrl={audioUrl || undefined}
+             onFileSelect={processFile}
              onRangeChange={(start, end) => setTimeRange({ start, end })} 
            />
            
