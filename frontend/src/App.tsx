@@ -4,15 +4,16 @@ import StemSelector from './components/StemSelector'
 import StemMixer from './components/StemMixer'
 import HarmonyTimeline from './components/HarmonyTimeline'
 import ReportViewer from './components/ReportViewer'
-import { uploadAudio, analyzeAudio, reanalyzeHarmony, getReport } from './services/api'
+import { uploadAudio, analyzeAudio, reanalyzeHarmony, getReport, cleanupAllData } from './services/api'
 import { AnalysisResponse, AudioSubRegion } from './types/analysis'
-import { UploadCloud, CheckCircle2, Loader2, Music, Sparkles } from 'lucide-react'
+import { UploadCloud, CheckCircle2, Loader2, Music, Sparkles, Trash2 } from 'lucide-react'
 
 function App() {
   const [fileId, setFileId] = useState<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const [isCleaning, setIsCleaning] = useState(false)
   
   const [taskId, setTaskId] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -156,6 +157,31 @@ function App() {
     setActiveChordIndex(null)
   }
 
+  const handleCleanupAndReset = async () => {
+    const confirmMessage = "アップロードされた音源と、サーバー上の中間生成物（ステム音源・MIDI・レポート）をすべて削除して初期状態にリセットしますか？";
+    if (!window.confirm(confirmMessage)) return;
+
+    setIsCleaning(true);
+    try {
+      await cleanupAllData();
+      // Reset all application states
+      setFileId(null);
+      setAudioUrl(null);
+      setFileName(null);
+      setTaskId(null);
+      setAnalysisResults(null);
+      setReportMarkdown('');
+      setActiveChordIndex(null);
+      setActiveSubRegion(null);
+      setTargetRange(null);
+    } catch (err) {
+      console.error("Cleanup failed:", err);
+      alert("クリーンアップ中にエラーが発生しました。");
+    } finally {
+      setIsCleaning(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-4 max-w-5xl space-y-6 pb-20">
       <header className="border-b border-gray-700 pb-4 flex flex-wrap justify-between items-center gap-4">
@@ -169,7 +195,7 @@ function App() {
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <label className="flex items-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow transition">
             <UploadCloud size={16} />
             <span>{fileName ? '音源を変更' : '音源を選択 (WAV/MP3)'}</span>
@@ -180,6 +206,19 @@ function App() {
               className="hidden"
             />
           </label>
+
+          {(fileId || taskId || fileName) && (
+            <button
+              type="button"
+              onClick={handleCleanupAndReset}
+              disabled={isCleaning}
+              className="flex items-center gap-1.5 bg-red-950/60 hover:bg-red-900/80 text-red-300 hover:text-white border border-red-800/60 text-xs font-medium px-3 py-2 rounded-lg transition shadow-xs cursor-pointer disabled:opacity-50"
+              title="サーバー上の音源・生成物を全削除して初期状態にリセット"
+            >
+              {isCleaning ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              <span>{isCleaning ? '消去中...' : 'データ全消去＆リセット'}</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -206,7 +245,7 @@ function App() {
 
       <main className="space-y-6">
         <section className="space-y-4">
-           {/* Audio Timeline: Original Waveform & Phrase Selection */}
+           {/* Audio Timeline: Original Waveform & Phrase Selector */}
            <AudioTimeline 
              audioUrl={audioUrl || undefined}
              onFileSelect={processFile}

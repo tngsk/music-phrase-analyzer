@@ -62,3 +62,15 @@ export async function getReport(taskId: string): Promise<{ status: string; repor
 
   return response.json();
 }
+
+export async function cleanupAllData(): Promise<{ status: string; deleted_uploads: number; deleted_outputs: number; total_deleted: number }> {
+  const response = await fetch(`${API_BASE_URL}/cleanup`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    throw new Error('Cleanup request failed');
+  }
+
+  return response.json();
+}
