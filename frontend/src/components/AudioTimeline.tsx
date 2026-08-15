@@ -8,9 +8,10 @@ interface Props {
   onRangeChange?: (start: number, end: number) => void;
   audioUrl?: string;
   onFileSelect?: (file: File) => void;
+  targetRange?: { start: number; end: number; autoPlay?: boolean } | null;
 }
 
-export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect }: Props) {
+export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, targetRange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -64,15 +65,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect }:
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingFile(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('audio/') || file.name.match(/\.(wav|mp3|flac|m4a|ogg)$/i)) {
-        if (onFileSelect) {
-          onFileSelect(file);
-        }
-      }
-    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,6 +75,36 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect }:
       }
     }
   };
+
+  // Programmatic Range Seek & Play when clicking Chord Cards
+  useEffect(() => {
+    if (!targetRange || !wavesurfer.current || !regionsPlugin.current) return;
+
+    const dur = duration || wavesurfer.current.getDuration() || 1;
+    const start = Math.max(0, Math.min(targetRange.start, dur));
+    const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
+
+    if (activeRegion.current) {
+      activeRegion.current.setOptions({ start, end });
+    } else {
+      activeRegion.current = regionsPlugin.current.addRegion({
+        start,
+        end,
+        color: 'rgba(59, 130, 246, 0.25)',
+        drag: true,
+        resize: true,
+      });
+    }
+
+    setRange({ start, end });
+    if (onRangeChange) onRangeChange(start, end);
+
+    wavesurfer.current.setTime(start);
+    if (targetRange.autoPlay) {
+      wavesurfer.current.play().catch(console.error);
+      setIsPlaying(true);
+    }
+  }, [targetRange, duration, onRangeChange]);
 
   // Initialize WaveSurfer instance
   useEffect(() => {

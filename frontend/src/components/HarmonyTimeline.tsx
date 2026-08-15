@@ -1,5 +1,5 @@
 import { ChordEvent, StemInfo } from '../types/analysis'
-import { Music, Activity, Layers, Loader2, Sparkles, Gauge } from 'lucide-react'
+import { Music, Activity, Layers, Loader2, Sparkles, Gauge, Play } from 'lucide-react'
 
 interface Props {
   chords: ChordEvent[];
@@ -10,6 +10,9 @@ interface Props {
   selectedHarmonicStems?: string[];
   onHarmonicStemsChange?: (stems: string[]) => void;
   isReanalyzing?: boolean;
+  onChordClick?: (start: number, end: number, index: number) => void;
+  activeChordIndex?: number | null;
+  totalDuration?: number;
 }
 
 const FUNCTION_BADGES: Record<string, { label: string; bg: string; text: string; border: string }> = {
@@ -35,7 +38,10 @@ export default function HarmonyTimeline({
   availableStems = [],
   selectedHarmonicStems = ["bass", "piano", "guitar", "other"],
   onHarmonicStemsChange,
-  isReanalyzing = false
+  isReanalyzing = false,
+  onChordClick,
+  activeChordIndex = null,
+  totalDuration
 }: Props) {
   
   const handleToggleStem = (stemName: string) => {
@@ -47,6 +53,27 @@ export default function HarmonyTimeline({
     } else {
       onHarmonicStemsChange([...selectedHarmonicStems, stemName]);
     }
+  };
+
+  const handleCardClick = (chord: ChordEvent, index: number) => {
+    if (!onChordClick) return;
+    const start = chord.time;
+    let end: number;
+    
+    if (index < chords.length - 1) {
+      end = chords[index + 1].time;
+    } else if (totalDuration && totalDuration > start) {
+      end = totalDuration;
+    } else {
+      end = start + 2.0; // Default 2s duration for last chord
+    }
+
+    // Ensure minimum interval of 0.3s
+    if (end <= start) {
+      end = start + 1.0;
+    }
+
+    onChordClick(start, end, index);
   };
 
   const candidateStems = availableStems.length > 0 
@@ -75,7 +102,7 @@ export default function HarmonyTimeline({
           )}
         </div>
 
-        {/* Detected Progression Badges (王道進行, 丸サ進行, カノン進行等) */}
+        {/* Detected Progression Badges */}
         {progressions.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             <Activity size={14} className="text-indigo-400" />
@@ -130,7 +157,7 @@ export default function HarmonyTimeline({
         </div>
       </div>
 
-      {/* Chords Sequence Grid Layout (縦方向に美しく折り返し展開) */}
+      {/* Chords Sequence Grid Layout with Click-to-Play Interaction */}
       {chords.length === 0 ? (
         <div className="text-xs text-gray-400 py-4 text-center bg-gray-900/50 rounded-lg border border-gray-800">
           選択されたパートから和音データが検出されませんでした。上のチップから別のパート（Bass, Other等）を追加してみてください。
@@ -146,20 +173,33 @@ export default function HarmonyTimeline({
             };
 
             const isDownbeat = chord.bar_beat?.endsWith('.1');
+            const isActive = activeChordIndex === i;
             const displayBeat = chord.bar_beat ? `Bar ${chord.bar_beat}` : `${chord.time.toFixed(1)}s`;
 
             return (
-              <div
+              <button
                 key={i}
-                className={`flex flex-col items-center justify-between px-2.5 py-2.5 rounded-lg border transition shadow-sm ${
-                  isDownbeat 
-                    ? 'bg-gray-900 border-purple-500/50 hover:border-purple-400 ring-1 ring-purple-500/20' 
-                    : 'bg-gray-900/90 border-gray-700/80 hover:bg-gray-750'
+                type="button"
+                onClick={() => handleCardClick(chord, i)}
+                className={`group relative flex flex-col items-center justify-between px-2.5 py-2.5 rounded-lg border transition text-left cursor-pointer select-none ${
+                  isActive
+                    ? 'bg-purple-950/80 border-purple-400 ring-2 ring-purple-400/60 shadow-md scale-[1.02]'
+                    : isDownbeat 
+                      ? 'bg-gray-900 border-purple-500/50 hover:border-purple-400 ring-1 ring-purple-500/20 hover:scale-[1.02]' 
+                      : 'bg-gray-900/90 border-gray-700/80 hover:bg-gray-750 hover:border-gray-500 hover:scale-[1.02]'
                 }`}
+                title={`クリックして ${chord.chord} (${displayBeat}) の区間をオリジナル音源で再生`}
               >
+                {/* Play Icon on Hover / Active Indicator */}
+                <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition text-purple-300">
+                  <Play size={10} className="fill-current" />
+                </div>
+
                 {/* Bar.Beat Timing Badge */}
-                <div className="flex flex-col items-center mb-1 text-center">
-                  <span className={`text-[11px] font-mono font-bold tracking-tight ${isDownbeat ? 'text-purple-300' : 'text-gray-300'}`}>
+                <div className="flex flex-col items-center mb-1 text-center w-full">
+                  <span className={`text-[11px] font-mono font-bold tracking-tight ${
+                    isActive ? 'text-purple-200' : isDownbeat ? 'text-purple-300' : 'text-gray-300'
+                  }`}>
                     {displayBeat}
                   </span>
                   <span className="text-[9px] font-mono text-gray-500">
@@ -168,7 +208,7 @@ export default function HarmonyTimeline({
                 </div>
 
                 {/* Chord Name (with Slash Chord support) */}
-                <span className="text-sm font-bold text-white tracking-wide my-1 text-center break-words">
+                <span className="text-sm font-bold text-white tracking-wide my-1 text-center break-words group-hover:text-purple-200 transition">
                   {chord.chord}
                 </span>
 
@@ -186,7 +226,7 @@ export default function HarmonyTimeline({
                     </span>
                   )}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

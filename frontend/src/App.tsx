@@ -21,6 +21,9 @@ function App() {
   const [reportMarkdown, setReportMarkdown] = useState<string>('')
   
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
+  const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
+  const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
+
   const [selectedStems, setSelectedStems] = useState<string[]>([
     "vocals", "bass", "drums", "guitar", "piano", "other"
   ])
@@ -39,6 +42,8 @@ function App() {
     setTaskId(null)
     setAnalysisResults(null)
     setReportMarkdown('')
+    setActiveChordIndex(null)
+    setTargetRange(null)
     
     setIsUploading(true)
     try {
@@ -60,6 +65,7 @@ function App() {
   const handleAnalyze = async () => {
     if (!fileId) return
     setIsAnalyzing(true)
+    setActiveChordIndex(null)
     try {
       const res: any = await analyzeAudio({
         file_id: fileId,
@@ -104,6 +110,19 @@ function App() {
     } finally {
       setIsReanalyzingHarmony(false)
     }
+  }
+
+  const handleChordClick = (chordStartRel: number, chordEndRel: number, index: number) => {
+    setActiveChordIndex(index)
+    // Map relative chord timestamp to original audio timeline absolute range
+    const absStart = timeRange.start + chordStartRel
+    const absEnd = timeRange.start + chordEndRel
+
+    setTargetRange({
+      start: Math.round(absStart * 100) / 100,
+      end: Math.round(absEnd * 100) / 100,
+      autoPlay: true
+    })
   }
 
   return (
@@ -156,11 +175,12 @@ function App() {
 
       <main className="space-y-6">
         <section className="space-y-4">
-           {/* Audio Timeline with Drag & Drop, Waveform, and Drag Region */}
+           {/* Audio Timeline with Drag & Drop, Waveform, and Interactive Range Seek/Play */}
            <AudioTimeline 
              audioUrl={audioUrl || undefined}
              onFileSelect={processFile}
              onRangeChange={(start, end) => setTimeRange({ start, end })} 
+             targetRange={targetRange}
            />
            
            <StemSelector selectedStems={selectedStems} onChange={setSelectedStems} />
@@ -200,7 +220,7 @@ function App() {
               taskId={taskId} 
             />
 
-            {/* Interactive Harmony & Progression Timeline with Bar.Beat Timing and BPM */}
+            {/* Interactive Harmony & Progression Timeline with Click-to-Play Region */}
             <HarmonyTimeline 
               chords={analysisResults.harmony?.chords || []}
               progressions={analysisResults.harmony?.progressions || []}
@@ -210,6 +230,9 @@ function App() {
               selectedHarmonicStems={selectedHarmonicStems}
               onHarmonicStemsChange={handleHarmonicStemsChange}
               isReanalyzing={isReanalyzingHarmony}
+              onChordClick={handleChordClick}
+              activeChordIndex={activeChordIndex}
+              totalDuration={timeRange.end - timeRange.start}
             />
           </section>
         )}
