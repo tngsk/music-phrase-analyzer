@@ -25,9 +25,6 @@ function App() {
   const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
   const [activeSubRegion, setActiveSubRegion] = useState<AudioSubRegion | null>(null)
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
-  
-  // Mutual exclusion stop signals
-  const [stopStemsSignal, setStopStemsSignal] = useState<number>(0)
 
   const [selectedStems, setSelectedStems] = useState<string[]>([
     "vocals", "bass", "drums", "guitar", "piano", "other"
@@ -39,7 +36,7 @@ function App() {
   const processFile = async (file: File) => {
     setFileName(file.name)
     
-    // Create local object URL for instant zero-latency waveform rendering & preview
+    // Create local object URL for zero-latency waveform rendering & preview
     const localUrl = URL.createObjectURL(file)
     setAudioUrl(localUrl)
     
@@ -50,7 +47,6 @@ function App() {
     setActiveChordIndex(null)
     setActiveSubRegion(null)
     setTargetRange(null)
-    setStopStemsSignal(Date.now())
     
     setIsUploading(true)
     try {
@@ -74,9 +70,8 @@ function App() {
     setIsAnalyzing(true)
     setActiveChordIndex(null)
     setActiveSubRegion(null)
-    setStopStemsSignal(Date.now())
     
-    // Lock the analyzed range to prevent misalignment if timeline region is moved later
+    // Lock the analyzed range for accurate chord time mapping
     const currentStart = timeRange.start
     const currentEnd = timeRange.end
     setAnalyzedRange({ start: currentStart, end: currentEnd })
@@ -128,11 +123,8 @@ function App() {
   }
 
   const handleChordClick = (chordStartRel: number, chordEndRel: number, index: number) => {
-    // 1. Immediately force-stop any running stem mini waveforms
-    setStopStemsSignal(Date.now())
-
     setActiveChordIndex(index)
-    // Map relative chord timestamp to original audio timeline absolute range based on locked analyzedRange
+    
     const absStart = analyzedRange.start + chordStartRel
     const absEnd = analyzedRange.start + chordEndRel
 
@@ -145,6 +137,8 @@ function App() {
     }
 
     setActiveSubRegion(subReg)
+    
+    // Play the original audio timeline for this chord region
     setTargetRange({
       start: subReg.startAbs,
       end: subReg.endAbs,
@@ -202,13 +196,12 @@ function App() {
 
       <main className="space-y-6">
         <section className="space-y-4">
-           {/* Audio Timeline with Drag & Drop, Waveform, and Interactive Range Seek/Play */}
+           {/* Audio Timeline: Original Waveform & Phrase Selection */}
            <AudioTimeline 
              audioUrl={audioUrl || undefined}
              onFileSelect={processFile}
              onRangeChange={(start, end) => setTimeRange({ start, end })} 
              targetRange={targetRange}
-             onPlayStart={() => setStopStemsSignal(Date.now())}
            />
 
            {/* Harmony & Chord Progression Timeline (Directly below Audio Timeline) */}
@@ -261,12 +254,11 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-5 animate-fade-in">
-            {/* 6-Track Synchronized Stem Mixer with Absolute Priority Stop and Solo/Mute */}
+            {/* 6 Separated Stems with Sync Region Highlight & Independent Playback */}
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 
               activeSubRegion={activeSubRegion}
-              forceStopSignal={stopStemsSignal}
             />
           </section>
         )}

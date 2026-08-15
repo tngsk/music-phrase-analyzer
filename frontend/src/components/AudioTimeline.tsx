@@ -5,21 +5,21 @@ import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js'
 import { Play, Pause, Square, Repeat, Volume2, UploadCloud } from 'lucide-react'
 
 interface Props {
-  onRangeChange?: (start: number, end: number) => void;
   audioUrl?: string;
   onFileSelect?: (file: File) => void;
+  onRangeChange?: (start: number, end: number) => void;
   targetRange?: { start: number; end: number; autoPlay?: boolean } | null;
-  onPlayStart?: () => void;
 }
 
-export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, targetRange, onPlayStart }: Props) {
+export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, targetRange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
   const wavesurfer = useRef<WaveSurfer | null>(null)
   const regionsPlugin = useRef<RegionsPlugin | null>(null)
   const activeRegion = useRef<Region | null>(null)
-  
+
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [range, setRange] = useState({ start: 0, end: 10 })
   const rangeRef = useRef(range)
@@ -34,23 +34,20 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     isLoopingRef.current = isLooping;
   }, [isLooping]);
 
-  const isSeekingRef = useRef(false)
-  const playTimerRef = useRef<any>(null)
-
   const handleRangeChange = useCallback((start: number, end: number) => {
     const s = Math.max(0, Math.round(start * 100) / 100);
     const e = Math.max(s + 0.1, Math.round(end * 100) / 100);
     rangeRef.current = { start: s, end: e };
     setRange({ start: s, end: e });
     if (onRangeChange) onRangeChange(s, e);
-  }, [onRangeChange])
+  }, [onRangeChange]);
 
-  const handleRangeChangeRef = useRef(handleRangeChange)
+  const handleRangeChangeRef = useRef(handleRangeChange);
   useEffect(() => {
     handleRangeChangeRef.current = handleRangeChange;
   }, [handleRangeChange]);
 
-  // Drag & Drop Event Handlers
+  // Drag & Drop Handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -87,19 +84,14 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     }
   };
 
-  // Programmatic Range Seek & Play when clicking Chord Cards
+  // Handle external region selection (e.g. Chord card clicked)
   useEffect(() => {
-    if (!targetRange || !wavesurfer.current || !regionsPlugin.current) return;
-
-    if (playTimerRef.current) {
-      clearTimeout(playTimerRef.current);
-    }
+    if (!targetRange || !wavesurfer.current || !regionsPlugin.current || !isLoaded) return;
 
     const dur = duration || wavesurfer.current.getDuration() || 1;
     const start = Math.max(0, Math.min(targetRange.start, dur));
     const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
 
-    // CRITICAL: Synchronously update rangeRef
     rangeRef.current = { start, end };
     setRange({ start, end });
     if (onRangeChange) onRangeChange(start, end);
@@ -116,31 +108,21 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       });
     }
 
-    isSeekingRef.current = true;
-    wavesurfer.current.pause();
     wavesurfer.current.setTime(start);
 
     if (targetRange.autoPlay) {
-      if (onPlayStart) onPlayStart();
-      playTimerRef.current = setTimeout(() => {
-        if (wavesurfer.current) {
-          wavesurfer.current.play().then(() => {
-            setIsPlaying(true);
-            isSeekingRef.current = false;
-          }).catch(console.error);
-        }
-      }, 50);
-    } else {
-      isSeekingRef.current = false;
+      wavesurfer.current.play().then(() => {
+        setIsPlaying(true);
+      }).catch(console.error);
     }
-  }, [targetRange, duration, onRangeChange, onPlayStart]);
+  }, [targetRange, duration, isLoaded, onRangeChange]);
 
-  // Initialize WaveSurfer instance
+  // Initialize WaveSurfer
   useEffect(() => {
     if (!containerRef.current || !timelineRef.current) return;
 
-    const regions = RegionsPlugin.create()
-    regionsPlugin.current = regions
+    const regions = RegionsPlugin.create();
+    regionsPlugin.current = regions;
 
     const timeline = TimelinePlugin.create({
       container: timelineRef.current,
@@ -151,7 +133,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
         fontSize: '11px',
         color: '#9ca3af',
       }
-    })
+    });
 
     const ws = WaveSurfer.create({
       container: containerRef.current,
@@ -167,7 +149,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     });
     wavesurfer.current = ws;
 
-    // Enable drag selection on waveform
     regions.enableDragSelection({
       color: 'rgba(59, 130, 246, 0.25)',
     });
@@ -177,9 +158,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       setDuration(dur);
       setIsLoaded(true);
 
-      // Clear existing regions
       regions.clearRegions();
-
       const defaultStart = 0;
       const defaultEnd = Math.min(10, dur > 0 ? dur : 10);
 
@@ -205,36 +184,28 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       }
     });
 
-    // Timeupdate boundary monitoring: Absolute stop when reaching region end
     ws.on('timeupdate', (currentTime) => {
-      if (!ws.isPlaying() || isSeekingRef.current) return;
+      if (!ws.isPlaying()) return;
 
-      const currentEnd = rangeRef.current.end;
       const currentStart = rangeRef.current.start;
+      const currentEnd = rangeRef.current.end;
 
-      // Ignore if currentTime hasn't caught up with start position yet
-      if (currentTime < currentStart - 0.05) return;
-
-      // Absolute Stop / Loop Enforcement
       if (currentTime >= currentEnd) {
         if (isLoopingRef.current) {
           ws.setTime(currentStart);
           ws.play().catch(console.error);
         } else {
-          // Hard stop: Pause immediately and do not loop
           ws.pause();
+          ws.setTime(currentStart);
           setIsPlaying(false);
         }
       }
     });
 
     regions.on('region-created', (region) => {
-      // Keep only one active selection region
       const all = regions.getRegions();
       all.forEach((r) => {
-        if (r.id !== region.id) {
-          r.remove();
-        }
+        if (r.id !== region.id) r.remove();
       });
       activeRegion.current = region;
       handleRangeChangeRef.current(region.start, region.end);
@@ -246,13 +217,12 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     });
 
     return () => {
-      if (playTimerRef.current) clearTimeout(playTimerRef.current);
       ws.destroy();
       wavesurfer.current = null;
-    }
+    };
   }, []);
 
-  // Load audioUrl when changed
+  // Load Audio
   useEffect(() => {
     if (wavesurfer.current && audioUrl) {
       setIsLoaded(false);
@@ -261,27 +231,21 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     }
   }, [audioUrl]);
 
-  // Absolute Priority Stop Commands
-  const handlePlayRegion = async () => {
-    if (!wavesurfer.current) return;
-    
+  const handlePlayPause = async () => {
+    if (!wavesurfer.current || !isLoaded) return;
+
     if (isPlaying) {
-      // Top priority stop
       wavesurfer.current.pause();
       setIsPlaying(false);
       return;
     }
 
-    if (onPlayStart) onPlayStart();
-
+    const cur = wavesurfer.current.getCurrentTime();
     const start = rangeRef.current.start;
     const end = rangeRef.current.end;
-    const currentTime = wavesurfer.current.getCurrentTime();
 
-    if (currentTime < start || currentTime >= end) {
-      isSeekingRef.current = true;
+    if (cur < start || cur >= end) {
       wavesurfer.current.setTime(start);
-      setTimeout(() => { isSeekingRef.current = false; }, 40);
     }
 
     try {
@@ -294,9 +258,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
 
   const handleStop = () => {
     if (!wavesurfer.current) return;
-    if (playTimerRef.current) clearTimeout(playTimerRef.current);
-    setIsLooping(false);
-    // Absolute immediate pause
     wavesurfer.current.pause();
     wavesurfer.current.setTime(rangeRef.current.start);
     setIsPlaying(false);
@@ -306,7 +267,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     setIsLooping(!isLooping);
   };
 
-  const setFixedRange = (start: number, end: number) => {
+  const setPresetRange = (start: number, end: number) => {
     if (!wavesurfer.current || !regionsPlugin.current) return;
     const dur = duration || wavesurfer.current.getDuration() || 1;
     const safeEnd = Math.min(end, dur);
@@ -316,13 +277,10 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     if (onRangeChange) onRangeChange(start, safeEnd);
 
     if (activeRegion.current) {
-      activeRegion.current.setOptions({
-        start: start,
-        end: safeEnd,
-      });
+      activeRegion.current.setOptions({ start, end: safeEnd });
     } else {
       activeRegion.current = regionsPlugin.current.addRegion({
-        start: start,
+        start,
         end: safeEnd,
         color: 'rgba(59, 130, 246, 0.25)',
         drag: true,
@@ -343,7 +301,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Hidden file input for click-to-upload */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -397,7 +354,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
           className="w-full bg-gray-950 rounded-b overflow-hidden border border-gray-700" 
         />
         
-        {/* Overlay when dragging over existing waveform */}
         {isDraggingFile && (
           <div className="absolute inset-0 bg-blue-900/40 backdrop-blur-xs border-2 border-blue-500 border-dashed rounded flex items-center justify-center pointer-events-none z-20">
             <span className="text-sm font-semibold text-white bg-blue-600 px-4 py-1.5 rounded-full shadow-lg">
@@ -411,7 +367,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
         <div className="mt-4 flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-2">
             <button 
-              onClick={handlePlayRegion}
+              onClick={handlePlayPause}
               disabled={!isLoaded}
               className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-xs font-semibold shadow cursor-pointer ${
                 isPlaying 
@@ -446,9 +402,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
 
           <div className="flex gap-1.5 text-xs text-gray-400 items-center">
              <span className="text-[11px]">Presets:</span>
-             <button onClick={() => setFixedRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–5s</button>
-             <button onClick={() => setFixedRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–10s</button>
-             <button onClick={() => setFixedRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">5–15s</button>
+             <button onClick={() => setPresetRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–5s</button>
+             <button onClick={() => setPresetRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–10s</button>
+             <button onClick={() => setPresetRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">5–15s</button>
           </div>
         </div>
       )}
