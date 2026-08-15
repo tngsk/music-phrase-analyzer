@@ -7,7 +7,7 @@ import uuid
 import json
 import pretty_midi
 
-from app.config import UPLOAD_DIR, OUTPUT_DIR
+from app.config import UPLOAD_DIR, OUTPUT_DIR, DEMUCS_MODEL
 from app.services import (
     slice_and_normalize_audio,
     run_demucs_separation,
@@ -52,16 +52,21 @@ async def analyze_phrase(request: AnalyzeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio slicing failed: {str(e)}")
 
-    # 2. Stem separation
+    # 2. 6-Stem neural separation (htdemucs_6s)
     stem_dir = task_dir / "stems"
-    stems_to_separate = request.stems if request.stems else ["vocals", "bass", "drums", "other"]
-    separated_stems = run_demucs_separation(sliced_audio_path, stem_dir, stems_to_separate)
+    default_6_stems = ["vocals", "bass", "drums", "guitar", "piano", "other"]
+    stems_to_separate = request.stems if request.stems else default_6_stems
+    
+    try:
+        separated_stems = run_demucs_separation(sliced_audio_path, stem_dir, stems_to_separate, model=DEMUCS_MODEL)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Demucs 6-stem separation failed: {str(e)}")
 
     analysis_results = {}
     all_notes = []
     stems_info = []
 
-    # 3. Process each stem
+    # 3. Process each stem (Audio to MIDI & harmonic analysis)
     midi_paths = {}
     melody_results = {}
     harmony_results = {}
@@ -69,17 +74,18 @@ async def analyze_phrase(request: AnalyzeRequest):
     
     for stem, stem_path in separated_stems.items():
         midi_path = task_dir / f"{stem}.mid"
-        notes = run_audio_to_midi(stem_path, midi_path, stem_name=stem)
-        all_notes.extend(notes)
-        midi_paths[stem] = midi_path
-        
-        # Load stem midi into multi-track combined MIDI
         try:
+            notes = run_audio_to_midi(stem_path, midi_path, stem_name=stem)
+            all_notes.extend(notes)
+            midi_paths[stem] = midi_path
+            
+            # Load stem midi into multi-track combined MIDI
             stem_pm = pretty_midi.PrettyMIDI(str(midi_path))
             for inst in stem_pm.instruments:
                 combined_pm.instruments.append(inst)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"MIDI generation error for stem {stem}: {e}")
+            notes = []
 
         stems_info.append({
             "stem": stem,
@@ -88,30 +94,37 @@ async def analyze_phrase(request: AnalyzeRequest):
             "note_count": len(notes)
         })
         
-        if stem in ["other", "vocals", "piano", "guitar"]:
-            m_res = analyze_melody(str(midi_path))
-            if "error" not in m_res:
-                melody_results[stem] = m_res
-                
-            h_res = analyze_harmony(str(midi_path))
-            if "error" not in h_res:
-                harmony_results[stem] = h_res
+        # Analyze melody and harmony from harmonic stems
+        if stem in ["piano", "guitar", "other", "vocals"]:
+            if midi_path.exists():
+                m_res = analyze_melody(str(midi_path))
+                if "error" not in m_res:
+                    melody_results[stem] = m_res
+                    
+                h_res = analyze_harmony(str(midi_path))
+                if "error" not in h_res:
+                    harmony_results[stem] = h_res
 
     # Save multi-track combined MIDI
     try:
         combined_pm.write(str(task_dir / "all_stems.mid"))
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Failed to write combined MIDI: {e}")
 
     # 4. Global analysis (rhythm, timbre on sliced audio)
     rhythm_res = analyze_rhythm(str(sliced_audio_path))
     timbre_res = analyze_timbre(str(sliced_audio_path))
     
-    # Aggregate results
-    if melody_results:
-        analysis_results["melody"] = list(melody_results.values())[0]
-    if harmony_results:
-        analysis_results["harmony"] = list(harmony_results.values())[0]
+    # Priority for harmony/melody: piano -> guitar -> other -> vocals
+    for preferred in ["piano", "other", "guitar", "vocals"]:
+        if preferred in harmony_results:
+            analysis_results["harmony"] = harmony_results[preferred]
+            break
+            
+    for preferred in ["vocals", "piano", "guitar", "other"]:
+        if preferred in melody_results:
+            analysis_results["melody"] = melody_results[preferred]
+            break
         
     analysis_results["rhythm"] = rhythm_res
     analysis_results["timbre"] = timbre_res

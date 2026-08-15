@@ -25,8 +25,8 @@ def sample_wav_bytes():
 
 def test_full_pipeline_integration(client, sample_wav_bytes):
     """
-    E2E Dataflow Integration Test:
-    Upload Audio -> Analyze Phrase -> Verify Real Separated Stems -> Verify MIDI Export.
+    E2E Dataflow Integration Test for 6-Stem Pipeline:
+    Upload Audio -> Analyze Phrase with Demucs 6s -> Verify Real Separated 6 Stems -> Verify MIDI Export.
     Strictly asserts genuine data generation without silent fallbacks.
     """
     # 1. Upload Audio
@@ -36,12 +36,13 @@ def test_full_pipeline_integration(client, sample_wav_bytes):
     file_id = res_up.json().get("file_id")
     assert file_id is not None
     
-    # 2. Analyze Phrase (Demucs separation + Music21 + Librosa)
+    # 2. Analyze Phrase (Demucs 6s separation: vocals, bass, drums, guitar, piano, other)
+    stems_6 = ["vocals", "bass", "drums", "guitar", "piano", "other"]
     analyze_payload = {
         "file_id": file_id,
         "start_time": 0.0,
         "end_time": 2.0,
-        "stems": ["vocals", "bass", "drums", "other"]
+        "stems": stems_6
     }
     res_an = client.post("/analyze/", json=analyze_payload)
     assert res_an.status_code == 200, f"Analysis failed: {res_an.text}"
@@ -52,11 +53,13 @@ def test_full_pipeline_integration(client, sample_wav_bytes):
     assert "results" in data
     assert "notes" in data
     assert "stems" in data
-    assert len(data["stems"]) == 4
+    assert len(data["stems"]) == 6
 
-    # 3. Verify Stem Audio Endpoints
+    # 3. Verify All 6 Stem Audio & MIDI Endpoints
     for stem_info in data["stems"]:
         stem_name = stem_info["stem"]
+        assert stem_name in stems_6
+        
         res_audio = client.get(f"/export/audio/{task_id}/{stem_name}")
         assert res_audio.status_code == 200, f"Stem audio download failed for '{stem_name}'"
         assert len(res_audio.content) > 1000, f"Stem '{stem_name}' audio is suspiciously small"

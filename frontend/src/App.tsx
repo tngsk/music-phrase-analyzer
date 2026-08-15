@@ -20,7 +20,9 @@ function App() {
   const [reportMarkdown, setReportMarkdown] = useState<string>('')
   
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
-  const [selectedStems, setSelectedStems] = useState<string[]>(["vocals", "bass", "drums", "other"])
+  const [selectedStems, setSelectedStems] = useState<string[]>([
+    "vocals", "bass", "drums", "guitar", "piano", "other"
+  ])
 
   const processFile = async (file: File) => {
     setFileName(file.name)
@@ -89,7 +91,7 @@ function App() {
             <span>Music Phrase Analyzer</span>
           </h1>
           <p className="text-gray-400 mt-0.5 text-xs">
-            音源をドラッグ＆ドロップし、気になるフレーズを選択してパート分離（Demucs）＋ 和声解析 ＋ MIDI抽出。
+            音源をドラッグ＆ドロップし、気になるフレーズを選択して 6パート音源分離（Demucs 6s）＋ 和声解析 ＋ MIDI抽出。
           </p>
         </div>
         
@@ -148,7 +150,7 @@ function App() {
                {isAnalyzing ? (
                  <>
                    <Loader2 size={16} className="animate-spin" />
-                   <span>フレーズ解析中 (Demucs + music21)...</span>
+                   <span>6パート解析中 (Demucs 6s + music21)...</span>
                  </>
                ) : (
                  <>
@@ -168,7 +170,7 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-5 animate-fade-in">
-            {/* Stem Audio Mixer & Multi-track MIDI Download */}
+            {/* Stem Audio Mixer & Multi-track MIDI Download (6 Stems) */}
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 

@@ -10,4 +10,4 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 MAX_UPLOAD_SIZE_MB = 50
-DEMUCS_MODEL = "htdemucs"
+DEMUCS_MODEL = "htdemucs_6s"

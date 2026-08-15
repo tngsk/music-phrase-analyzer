@@ -4,11 +4,11 @@ import subprocess
 import sys
 import os
 
-def run_demucs_separation(input_path: Path, output_dir: Path, stems: list[str], model: str = "htdemucs") -> dict[str, Path]:
+def run_demucs_separation(input_path: Path, output_dir: Path, stems: list[str], model: str = "htdemucs_6s") -> dict[str, Path]:
     """
-    Runs Demucs for neural audio stem separation.
-    Uses sys.executable -m demucs.separate to ensure execution within the active Python environment.
-    Strictly follows Fail-Fast principle (No Silent Fallback to original unseparated audio).
+    Runs Demucs for neural audio stem separation using 6-stem model (htdemucs_6s).
+    Separates: vocals, bass, drums, guitar, piano, and other.
+    Strictly follows Fail-Fast principle without silent fallbacks.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     separated_paths: dict[str, Path] = {}
@@ -27,7 +27,7 @@ def run_demucs_separation(input_path: Path, output_dir: Path, stems: list[str], 
         "-o", str(output_dir), 
         str(input_path)
     ]
-    print(f"Executing Demucs: {' '.join(cmd)}")
+    print(f"Executing Demucs ({model}): {' '.join(cmd)}")
     
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -58,13 +58,7 @@ def run_demucs_separation(input_path: Path, output_dir: Path, stems: list[str], 
             separated_paths[stem] = dst_stem
             print(f"✓ Separated stem '{stem}' successfully saved to {dst_stem}")
         else:
-            # Check for alternative stems (e.g. guitar/piano mapped from other)
-            other_stem = demucs_out / "other.wav"
-            if other_stem.exists():
-                shutil.copy2(other_stem, dst_stem)
-                separated_paths[stem] = dst_stem
-            else:
-                raise FileNotFoundError(f"Stem '{stem}' or 'other' was not produced by Demucs model.")
+            raise FileNotFoundError(f"Stem '{stem}' was not produced by Demucs model '{model}'.")
     
     # Cleanup nested model directory
     shutil.rmtree(output_dir / model, ignore_errors=True)
