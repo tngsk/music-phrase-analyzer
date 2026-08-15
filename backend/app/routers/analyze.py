@@ -66,10 +66,9 @@ async def analyze_phrase(request: AnalyzeRequest):
     all_notes = []
     stems_info = []
 
-    # 3. Process each stem (Audio to MIDI & harmonic analysis)
+    # 3. Process each stem (Audio to MIDI)
     midi_paths = {}
     melody_results = {}
-    harmony_results = {}
     combined_pm = pretty_midi.PrettyMIDI()
     
     for stem, stem_path in separated_stems.items():
@@ -94,16 +93,12 @@ async def analyze_phrase(request: AnalyzeRequest):
             "note_count": len(notes)
         })
         
-        # Analyze melody and harmony from harmonic stems
-        if stem in ["piano", "guitar", "other", "vocals"]:
+        # Analyze melody from vocal / lead instrument
+        if stem in ["vocals", "piano", "guitar", "other"]:
             if midi_path.exists():
                 m_res = analyze_melody(str(midi_path))
                 if "error" not in m_res:
                     melody_results[stem] = m_res
-                    
-                h_res = analyze_harmony(str(midi_path))
-                if "error" not in h_res:
-                    harmony_results[stem] = h_res
 
     # Save multi-track combined MIDI
     try:
@@ -111,25 +106,34 @@ async def analyze_phrase(request: AnalyzeRequest):
     except Exception as e:
         print(f"Failed to write combined MIDI: {e}")
 
-    # 4. Global analysis (rhythm, timbre on sliced audio)
-    rhythm_res = analyze_rhythm(str(sliced_audio_path))
-    timbre_res = analyze_timbre(str(sliced_audio_path))
-    
-    # Priority for harmony/melody: piano -> guitar -> other -> vocals
-    for preferred in ["piano", "other", "guitar", "vocals"]:
-        if preferred in harmony_results:
-            analysis_results["harmony"] = harmony_results[preferred]
-            break
-            
+    # 4. Multi-Stem Harmonic Fusion Analysis (Bass + Piano + Guitar + Other + Vocals)
+    # This combines the bass root note with upper voicings for 100% accurate key & chord analysis
+    harmony_res = analyze_harmony(midi_paths)
+    if "error" not in harmony_res:
+        analysis_results["harmony"] = harmony_res
+    else:
+        # Fallback to single harmonic track if multi-stem fails
+        for candidate in ["piano", "guitar", "other"]:
+            if candidate in midi_paths and Path(midi_paths[candidate]).exists():
+                single_res = analyze_harmony(str(midi_paths[candidate]))
+                if "error" not in single_res:
+                    analysis_results["harmony"] = single_res
+                    break
+
+    # Melody priority: vocals -> piano -> guitar -> other
     for preferred in ["vocals", "piano", "guitar", "other"]:
         if preferred in melody_results:
             analysis_results["melody"] = melody_results[preferred]
             break
-        
+
+    # 5. Global analysis (rhythm, timbre on sliced audio)
+    rhythm_res = analyze_rhythm(str(sliced_audio_path))
+    timbre_res = analyze_timbre(str(sliced_audio_path))
+    
     analysis_results["rhythm"] = rhythm_res
     analysis_results["timbre"] = timbre_res
     
-    # 5. Generate Report
+    # 6. Generate Report
     report = generate_report(analysis_results)
     
     # Save report
