@@ -182,6 +182,25 @@ function App() {
              onRangeChange={(start, end) => setTimeRange({ start, end })} 
              targetRange={targetRange}
            />
+
+           {/* Harmony & Chord Progression Timeline (Directly below Audio Timeline) */}
+           {analysisResults && (
+             <div className="animate-fade-in">
+               <HarmonyTimeline 
+                 chords={analysisResults.harmony?.chords || []}
+                 progressions={analysisResults.harmony?.progressions || []}
+                 keyName={analysisResults.harmony?.key}
+                 bpm={analysisResults.rhythm?.bpm || analysisResults.harmony?.bpm}
+                 availableStems={analysisResults.stems || []}
+                 selectedHarmonicStems={selectedHarmonicStems}
+                 onHarmonicStemsChange={handleHarmonicStemsChange}
+                 isReanalyzing={isReanalyzingHarmony}
+                 onChordClick={handleChordClick}
+                 activeChordIndex={activeChordIndex}
+                 totalDuration={timeRange.end - timeRange.start}
+               />
+             </div>
+           )}
            
            <StemSelector selectedStems={selectedStems} onChange={setSelectedStems} />
            
@@ -218,21 +237,6 @@ function App() {
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 
-            />
-
-            {/* Interactive Harmony & Progression Timeline with Click-to-Play Region */}
-            <HarmonyTimeline 
-              chords={analysisResults.harmony?.chords || []}
-              progressions={analysisResults.harmony?.progressions || []}
-              keyName={analysisResults.harmony?.key}
-              bpm={analysisResults.rhythm?.bpm || analysisResults.harmony?.bpm}
-              availableStems={analysisResults.stems || []}
-              selectedHarmonicStems={selectedHarmonicStems}
-              onHarmonicStemsChange={handleHarmonicStemsChange}
-              isReanalyzing={isReanalyzingHarmony}
-              onChordClick={handleChordClick}
-              activeChordIndex={activeChordIndex}
-              totalDuration={timeRange.end - timeRange.start}
             />
           </section>
         )}
