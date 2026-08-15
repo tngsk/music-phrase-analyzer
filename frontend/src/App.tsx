@@ -8,9 +8,14 @@ import TheoryDashboard from './components/TheoryDashboard'
 import ReportViewer from './components/ReportViewer'
 import { uploadAudio, analyzeAudio, getReport } from './services/api'
 import { AnalysisResponse } from './types/analysis'
+import { UploadCloud, CheckCircle2, Loader2, Music } from 'lucide-react'
 
 function App() {
   const [fileId, setFileId] = useState<string | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  
   const [taskId, setTaskId] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<AnalysisResponse | null>(null)
@@ -21,11 +26,21 @@ function App() {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      setFileName(file.name)
+      
+      // Create local object URL for instant zero-latency waveform rendering & preview
+      const localUrl = URL.createObjectURL(file)
+      setAudioUrl(localUrl)
+      
+      setIsUploading(true)
       try {
-        const res = await uploadAudio(e.target.files[0])
+        const res = await uploadAudio(file)
         setFileId(res.file_id)
       } catch (err) {
         console.error("Upload failed", err)
+      } finally {
+        setIsUploading(false)
       }
     }
   }
@@ -41,7 +56,10 @@ function App() {
         stems: selectedStems
       })
       setTaskId(res.task_id)
-      setAnalysisResults(res.results)
+      setAnalysisResults({
+        ...res.results,
+        notes: res.notes || []
+      })
       
       const reportRes = await getReport(res.task_id)
       setReportMarkdown(reportRes.report)
@@ -55,36 +73,84 @@ function App() {
 
   return (
     <div className="container mx-auto p-4 max-w-6xl space-y-6 pb-20">
-      <header className="border-b border-gray-700 pb-4 flex justify-between items-end">
+      <header className="border-b border-gray-700 pb-4 flex flex-wrap justify-between items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">Music Phrase Analyzer</h1>
-          <p className="text-gray-400 mt-2">Upload audio, select a phrase, analyze harmony & rhythm, and export stems.</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
+            <Music className="text-blue-400" size={32} />
+            <span>Music Phrase Analyzer</span>
+          </h1>
+          <p className="text-gray-400 mt-1 text-sm">
+            音源をアップロードし、気になるフレーズを範囲選択して、メロディ・コード・音色・MIDIを徹底解析。
+          </p>
         </div>
-        <div>
-           <input type="file" accept="audio/*" onChange={handleFileUpload} className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600 cursor-pointer"/>
+        
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow transition">
+            <UploadCloud size={18} />
+            <span>{fileName ? '音源を変更' : '音源を選択 (WAV/MP3)'}</span>
+            <input 
+              type="file" 
+              accept="audio/*" 
+              onChange={handleFileUpload} 
+              className="hidden"
+            />
+          </label>
         </div>
       </header>
 
+      {/* Upload Status Banner */}
+      {fileName && (
+        <div className="flex items-center justify-between bg-gray-800/80 border border-gray-700 px-4 py-2.5 rounded-lg text-sm">
+          <div className="flex items-center gap-2 text-gray-300">
+            <Music size={16} className="text-blue-400" />
+            <span className="font-mono">{fileName}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {isUploading ? (
+              <span className="flex items-center gap-1.5 text-amber-400 text-xs">
+                <Loader2 size={14} className="animate-spin" /> アップロード中...
+              </span>
+            ) : fileId ? (
+              <span className="flex items-center gap-1.5 text-green-400 text-xs">
+                <CheckCircle2 size={14} /> アップロード完了 (ID: {fileId.slice(0, 8)}...)
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       <main className="space-y-6">
         <section className="space-y-4">
-           <AudioTimeline onRangeChange={(start, end) => setTimeRange({start, end})} />
+           {/* Audio Timeline with Wavesurfer Waveform & Drag Region */}
+           <AudioTimeline 
+             audioUrl={audioUrl || undefined}
+             onRangeChange={(start, end) => setTimeRange({ start, end })} 
+           />
+           
            <StemSelector selectedStems={selectedStems} onChange={setSelectedStems} />
            
-           <div className="flex justify-between items-center bg-gray-800 p-4 rounded-lg">
+           <div className="flex justify-between items-center bg-gray-800 p-4 rounded-xl border border-gray-700">
              <button 
                onClick={handleAnalyze} 
-               disabled={!fileId || isAnalyzing}
-               className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white font-bold py-2 px-6 rounded transition"
+               disabled={!fileId || isAnalyzing || isUploading}
+               className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-gray-700 disabled:to-gray-700 text-white font-bold py-2.5 px-7 rounded-lg shadow-lg transition disabled:cursor-not-allowed"
              >
-               {isAnalyzing ? 'Analyzing...' : 'Analyze Selection'}
+               {isAnalyzing ? (
+                 <>
+                   <Loader2 size={18} className="animate-spin" />
+                   <span>フレーズ解析中 (Demucs + music21)...</span>
+                 </>
+               ) : (
+                 <span>選択範囲を解析する ({timeRange.start.toFixed(1)}s – {timeRange.end.toFixed(1)}s)</span>
+               )}
              </button>
              <PlayerControls taskId={taskId} selectedStems={selectedStems} />
            </div>
         </section>
 
         {analysisResults && (
-          <section className="space-y-4">
-            <h2 className="text-2xl font-semibold border-b border-gray-700 pb-2">Analysis Results</h2>
+          <section className="space-y-6 animate-fade-in">
+            <h2 className="text-2xl font-semibold border-b border-gray-700 pb-2 text-white">Analysis Results</h2>
             <PianoRoll notes={analysisResults.notes} />
             <HarmonyTimeline chords={analysisResults.harmony?.chords || []} />
             <TheoryDashboard results={analysisResults} />
