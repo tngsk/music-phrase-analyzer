@@ -8,7 +8,7 @@ description: >-
 
 # Jules Orchestrator Skill
 
-This skill guides the agent in orchestrating development tasks with **Google Jules**, leveraging a **Three-Tier Hybrid Architecture (Flash ⚡️ × Pro 🤖 × Local M2 🛡)**, strict microtask decomposition, contract-first design, **Fail-Fast quality assurance (No Silent Fallbacks)**, and real dataflow integration tests.
+This skill guides the agent in orchestrating development tasks with **Google Jules**, leveraging a **Three-Tier Hybrid Architecture (Flash ⚡️ × Pro 🤖 × Local M2 🛡)**, strict microtask decomposition, contract-first design, **Fail-Fast quality assurance (No Silent Fallbacks)**, autonomous execution guardrails, and real dataflow integration tests.
 
 ---
 
@@ -40,6 +40,8 @@ This skill guides the agent in orchestrating development tasks with **Google Jul
 5. **Clean Integration & Never Manual File-by-File Copying (パッチの一括適用)**:
    - 差分テキストから手動で個別ファイルを作成することは**厳禁（アンチパターン）**。
    - 必ず `jules remote pull --session <sessionId> --apply` で一発適用する。
+6. **Fully Autonomous Directive (対話停止・待機ボトルの回避)**:
+   - 現行の Jules CLI/MCP にはセッション途中のチャットメッセージをプログラムから取得・返答する API が存在しないため、発注プロンプトに必ず「自律完結指示」を付与して途中で質問待機（`Awaiting Input`）になるのを防ぐ。
 
 ---
 
@@ -70,6 +72,10 @@ Jules MCP (`jules_start_session`) または CLI (`jules remote new`) で各ス�
 - Target Files: `path/to/target1.py`, `path/to/target2.py`
 - Contract / Specification: See `docs/SPECIFICATION.md` and `schemas.py`
 
+## Execution Policy: Fully Autonomous (MANDATORY)
+- Work fully autonomously without pausing for interactive confirmation, plan approval, or questions.
+- If any minor design ambiguity arises, choose the standard industry best practice and proceed with the implementation.
+
 ## Requirements
 1. Implement [Functionality] conforming exactly to the defined types.
 2. DO NOT use silent fallbacks (never catch broad exceptions to return fake/dummy data). Let failures raise proper exceptions (Fail Fast).
@@ -80,8 +86,18 @@ Jules MCP (`jules_start_session`) または CLI (`jules remote new`) で各ス�
 - Iterate and fix the implementation until all tests pass with exit code 0 before concluding the session.
 ```
 
-### Step 4: Fast Triage & サポート
-Jules が質問やエラーで停止した場合、L1 (Flash) は瞬時に原因と処方箋を提示して自律ループに復帰させる。
+### Step 4: モニタリング ＆ ボトルネック対応 (Monitoring & Triage)
+
+#### ⚠️ 現行 Jules インターフェースの制約とボトルネック
+- `jules` CLI / `jules-mcp` では、セッション一覧とステータス（`jules_list_sessions`）は取得できますが、**セッション内部のチャット履歴（途中の質問メッセージ本文）を取得する API や外部から返答するコマンドは未実装**です。
+
+#### 💡 対処・リカバリ手順
+1. **ステータス監視**:
+   - `jules_list_sessions` を定期確認し、ステータスが `Awaiting Plan Approval` や `Waiting for User` になっているセッションを検出。
+2. **ユーザー誘導**:
+   - 待機状態になったセッションを検知した場合は、即座に該当の Web UI URL（`https://jules.google.com/session/<sessionId>`）を提示し、人間がブラウザまたはターミナル TUI（`jules`）で返答できるようにナビゲートする。
+3. **将来拡張**:
+   - Jules MCP に `jules_get_session_transcript` / `jules_send_session_message` が追加され次第、Antigravity（Flash）による完全自動 Fast Triage ループへ移行する。
 
 ### Step 5: 成果物の一括取り込み ＆ E2E実機検証
 1. ターミナルで一括適用コマンドを実行：
@@ -100,5 +116,6 @@ Jules が質問やエラーで停止した場合、L1 (Flash) は瞬時に原因
 - [ ] 例外を握りつぶすサイレント・フォールバックが存在しないか？（Fail Fast）
 - [ ] 単体・結合テストが「ファイル存在」ではなく「実データの中身」をアサートしているか？
 - [ ] 結合型定義（Contract）がリポジトリに先行プッシュされているか？
+- [ ] 発注プロンプトに「自律完結指示（Fully Autonomous Directive）」を含めたか？
 - [ ] 1タスクあたりのスコープが「1〜2モジュール＋テスト（100〜300行）」に収まっているか？
 - [ ] 取り込みに `jules remote pull --session <id> --apply` を使用したか？
