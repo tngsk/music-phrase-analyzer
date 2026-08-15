@@ -5,7 +5,7 @@ import StemMixer from './components/StemMixer'
 import HarmonyTimeline from './components/HarmonyTimeline'
 import ReportViewer from './components/ReportViewer'
 import { uploadAudio, analyzeAudio, reanalyzeHarmony, getReport } from './services/api'
-import { AnalysisResponse } from './types/analysis'
+import { AnalysisResponse, AudioSubRegion } from './types/analysis'
 import { UploadCloud, CheckCircle2, Loader2, Music, Sparkles } from 'lucide-react'
 
 function App() {
@@ -23,6 +23,7 @@ function App() {
   const [timeRange, setTimeRange] = useState({ start: 0, end: 10 })
   const [analyzedRange, setAnalyzedRange] = useState<{ start: number; end: number }>({ start: 0, end: 10 })
   const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
+  const [activeSubRegion, setActiveSubRegion] = useState<AudioSubRegion | null>(null)
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
 
   const [selectedStems, setSelectedStems] = useState<string[]>([
@@ -44,6 +45,7 @@ function App() {
     setAnalysisResults(null)
     setReportMarkdown('')
     setActiveChordIndex(null)
+    setActiveSubRegion(null)
     setTargetRange(null)
     
     setIsUploading(true)
@@ -67,6 +69,7 @@ function App() {
     if (!fileId) return
     setIsAnalyzing(true)
     setActiveChordIndex(null)
+    setActiveSubRegion(null)
     
     // Lock the analyzed range to prevent misalignment if timeline region is moved later
     const currentStart = timeRange.start
@@ -125,9 +128,18 @@ function App() {
     const absStart = analyzedRange.start + chordStartRel
     const absEnd = analyzedRange.start + chordEndRel
 
+    const subReg: AudioSubRegion = {
+      startRel: Math.round(chordStartRel * 100) / 100,
+      endRel: Math.round(chordEndRel * 100) / 100,
+      startAbs: Math.round(absStart * 100) / 100,
+      endAbs: Math.round(absEnd * 100) / 100,
+      autoPlay: true
+    }
+
+    setActiveSubRegion(subReg)
     setTargetRange({
-      start: Math.round(absStart * 100) / 100,
-      end: Math.round(absEnd * 100) / 100,
+      start: subReg.startAbs,
+      end: subReg.endAbs,
       autoPlay: true
     })
   }
@@ -240,10 +252,11 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-5 animate-fade-in">
-            {/* Stem Audio Mixer & Multi-track MIDI Download (6 Stems) */}
+            {/* 6-Track Synchronized Stem Mixer with Solo/Mute and Region Highlighting */}
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 
+              activeSubRegion={activeSubRegion}
             />
           </section>
         )}

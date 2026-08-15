@@ -19,6 +19,15 @@ export interface ChordEvent {
   bass?: string;         // Bass note (e.g. "E")
 }
 
+export interface AudioSubRegion {
+  startRel: number;      // Start time relative to sliced phrase (e.g. 0.0s)
+  endRel: number;        // End time relative to sliced phrase (e.g. 0.9s)
+  startAbs: number;      // Absolute start time in original file (e.g. 15.0s)
+  endAbs: number;        // Absolute end time in original file (e.g. 15.9s)
+  label?: string;        // e.g. "Bar 1.1: Fmaj7"
+  autoPlay?: boolean;
+}
+
 export interface ProgressionMatch {
   name: string;        // e.g. "王道進行", "丸サ進行"
   pattern: string;     // e.g. "IV - V - iii - vi"
