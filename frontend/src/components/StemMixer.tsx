@@ -83,6 +83,8 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
   const [duration, setDuration] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const isDrum = stem.stem.toLowerCase() === 'drums';
+
   const cfg = STEM_CONFIG[stem.stem.toLowerCase()] || {
     label: stem.stem,
     color: 'text-gray-300',
@@ -202,6 +204,11 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
     document.body.removeChild(link);
   };
 
+  // Compute clean status description
+  const noteStatusText = isDrum
+    ? (stem.note_count > 0 ? `${stem.note_count} 個のドラムヒット` : '無音 (ドラムなし)')
+    : (stem.note_count > 0 ? `${stem.note_count} 個のMIDIノート` : '無音 (演奏なし)');
+
   return (
     <div className={`p-4 rounded-xl border ${cfg.border} ${cfg.bg} flex flex-col justify-between gap-3 transition hover:border-gray-500 shadow-md`}>
       {/* Header Info */}
@@ -211,8 +218,8 @@ function StemCard({ stem, activePlayingStem, onPlay, onPause }: StemCardProps) {
             <Volume2 size={16} />
             <span>{cfg.label}</span>
           </div>
-          <div className="text-[11px] text-gray-400 mt-0.5 font-mono">
-            {stem.note_count > 0 ? `${stem.note_count} 個のMIDIノート` : '打楽器トラック'}
+          <div className={`text-[11px] mt-0.5 font-mono ${stem.note_count > 0 ? 'text-gray-300' : 'text-gray-500 italic'}`}>
+            {noteStatusText}
           </div>
         </div>
 
