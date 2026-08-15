@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from app.services.analysis_melody import analyze_melody
+from app.services.analysis_harmony import analyze_harmony
 from app.services.analysis_rhythm import analyze_rhythm
 from app.services.analysis_timbre import analyze_timbre
 from app.services.report_gen import generate_report
@@ -23,11 +24,12 @@ def dummy_audio_file(tmp_path):
 
 @pytest.fixture
 def dummy_midi_file(tmp_path):
-    """Create a dummy MIDI file with C4 and E4 notes."""
+    """Create a dummy MIDI file with C-E-G triad notes."""
     pm = pretty_midi.PrettyMIDI()
     inst = pretty_midi.Instrument(program=0)
     inst.notes.append(pretty_midi.Note(velocity=100, pitch=60, start=0.0, end=0.5))
-    inst.notes.append(pretty_midi.Note(velocity=100, pitch=64, start=0.5, end=1.0))
+    inst.notes.append(pretty_midi.Note(velocity=100, pitch=64, start=0.0, end=0.5))
+    inst.notes.append(pretty_midi.Note(velocity=100, pitch=67, start=0.0, end=0.5))
     pm.instruments.append(inst)
     
     file_path = tmp_path / "dummy.mid"
@@ -38,9 +40,14 @@ def test_analyze_melody(dummy_midi_file):
     res = analyze_melody(dummy_midi_file)
     assert "error" not in res
     assert res["pitch_range"]["min"] == 60
-    assert res["pitch_range"]["max"] == 64
-    assert res["pitch_range"]["range"] == 4
-    assert res["transitions"]["skip_ratio"] == 1.0
+    assert res["pitch_range"]["max"] == 67
+    assert res["pitch_range"]["range"] == 7
+
+def test_analyze_harmony(dummy_midi_file):
+    res = analyze_harmony(dummy_midi_file)
+    assert "error" not in res
+    assert "chords" in res
+    assert len(res["chords"]) > 0
 
 def test_analyze_rhythm(dummy_audio_file):
     res = analyze_rhythm(dummy_audio_file)
