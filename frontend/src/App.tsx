@@ -200,11 +200,12 @@ function App() {
               taskId={taskId} 
             />
 
-            {/* Interactive Harmony & Progression Timeline with Stem Selection Chips */}
+            {/* Interactive Harmony & Progression Timeline with Bar.Beat Timing and BPM */}
             <HarmonyTimeline 
               chords={analysisResults.harmony?.chords || []}
               progressions={analysisResults.harmony?.progressions || []}
               keyName={analysisResults.harmony?.key}
+              bpm={analysisResults.rhythm?.bpm || analysisResults.harmony?.bpm}
               availableStems={analysisResults.stems || []}
               selectedHarmonicStems={selectedHarmonicStems}
               onHarmonicStemsChange={handleHarmonicStemsChange}

@@ -8,12 +8,15 @@ export interface NoteEvent {
 }
 
 export interface ChordEvent {
-  time: number;       // Start time in seconds
-  chord: string;      // Chord name (e.g. "Cmaj7", "Am7", "C/E")
-  roman: string;      // Roman numeral (e.g. "IVM7", "V7", "vi")
-  function: string;   // "Tonic" | "Subdominant" | "Dominant"
-  root?: string;      // Root note (e.g. "C")
-  bass?: string;      // Bass note (e.g. "E")
+  time: number;          // Start time in seconds (e.g. 1.5)
+  measure?: number;      // Measure / Bar index (1, 2, 3...)
+  beat?: number;         // Beat in measure (1, 2, 3, 4)
+  bar_beat?: string;     // DAW notation (e.g. "1.1", "1.3", "2.1")
+  chord: string;         // Chord name (e.g. "Cmaj7", "Am7", "C/E")
+  roman: string;         // Roman numeral (e.g. "IVM7", "V7", "vi")
+  function: string;      // "Tonic" | "Subdominant" | "Dominant"
+  root?: string;         // Root note (e.g. "C")
+  bass?: string;         // Bass note (e.g. "E")
 }
 
 export interface ProgressionMatch {
@@ -38,6 +41,7 @@ export interface AnalysisResponse {
   };
   harmony?: {
     key?: string;
+    bpm?: number;
     chords: ChordEvent[];
     progressions: string[];
     matches?: ProgressionMatch[];

@@ -1,10 +1,11 @@
 import { ChordEvent, StemInfo } from '../types/analysis'
-import { Music, Activity, Layers, Loader2, Sparkles } from 'lucide-react'
+import { Music, Activity, Layers, Loader2, Sparkles, Gauge } from 'lucide-react'
 
 interface Props {
   chords: ChordEvent[];
   progressions?: string[];
   keyName?: string;
+  bpm?: number;
   availableStems?: StemInfo[];
   selectedHarmonicStems?: string[];
   onHarmonicStemsChange?: (stems: string[]) => void;
@@ -30,6 +31,7 @@ export default function HarmonyTimeline({
   chords = [], 
   progressions = [], 
   keyName,
+  bpm,
   availableStems = [],
   selectedHarmonicStems = ["bass", "piano", "guitar", "other"],
   onHarmonicStemsChange,
@@ -53,14 +55,22 @@ export default function HarmonyTimeline({
 
   return (
     <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md space-y-3.5">
-      {/* Header with Title and Detected Progressions / Key */}
+      {/* Header with Title, Key & BPM Badges */}
       <div className="flex flex-wrap justify-between items-center gap-2 border-b border-gray-700/70 pb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Music size={18} className="text-purple-400" />
           <h3 className="text-base font-semibold text-white">Harmony & Chord Progression</h3>
+          
           {keyName && keyName !== "Unknown" && (
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-purple-950/80 text-purple-200 border border-purple-700/60">
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-purple-950/80 text-purple-200 border border-purple-700/60 shadow-xs">
               Key: {keyName}
+            </span>
+          )}
+
+          {bpm && bpm > 0 && (
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 flex items-center gap-1 shadow-xs">
+              <Gauge size={12} />
+              <span>BPM: {Math.round(bpm)}</span>
             </span>
           )}
         </div>
@@ -72,7 +82,7 @@ export default function HarmonyTimeline({
             {progressions.map((prog, idx) => (
               <span
                 key={idx}
-                className="text-xs font-medium px-2 py-0.5 rounded-md bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex items-center gap-1"
+                className="text-xs font-medium px-2 py-0.5 rounded-md bg-indigo-900/40 text-indigo-200 border border-indigo-700/50 flex items-center gap-1 shadow-xs"
               >
                 <Sparkles size={11} className="text-amber-300" />
                 <span>{prog}</span>
@@ -120,7 +130,7 @@ export default function HarmonyTimeline({
         </div>
       </div>
 
-      {/* Chords Sequence Ribbon */}
+      {/* Chords Sequence Ribbon with Bar.Beat Timing */}
       {chords.length === 0 ? (
         <div className="text-xs text-gray-400 py-4 text-center bg-gray-900/50 rounded-lg border border-gray-800">
           選択されたパートから和音データが検出されませんでした。上のチップから別のパート（Bass, Other等）を追加してみてください。
@@ -135,18 +145,30 @@ export default function HarmonyTimeline({
               border: 'border-gray-600',
             };
 
+            const isDownbeat = chord.bar_beat?.endsWith('.1');
+            const displayBeat = chord.bar_beat ? `Bar ${chord.bar_beat}` : `${chord.time.toFixed(1)}s`;
+
             return (
               <div
                 key={i}
-                className="flex-shrink-0 flex flex-col items-center justify-between bg-gray-900/90 hover:bg-gray-750 px-3 py-2 rounded-lg border border-gray-700/80 transition min-w-[76px] shadow-sm"
+                className={`flex-shrink-0 flex flex-col items-center justify-between px-3.5 py-2.5 rounded-lg border transition min-w-[82px] shadow-sm ${
+                  isDownbeat 
+                    ? 'bg-gray-900 border-purple-500/50 hover:border-purple-400' 
+                    : 'bg-gray-900/90 border-gray-700/80 hover:bg-gray-750'
+                }`}
               >
-                {/* Timing Badge */}
-                <span className="text-[10px] font-mono text-gray-500 mb-1">
-                  {chord.time.toFixed(1)}s
-                </span>
+                {/* Bar.Beat Timing Badge */}
+                <div className="flex flex-col items-center mb-1">
+                  <span className={`text-[11px] font-mono font-bold ${isDownbeat ? 'text-purple-300' : 'text-gray-300'}`}>
+                    {displayBeat}
+                  </span>
+                  <span className="text-[9px] font-mono text-gray-500">
+                    {chord.time.toFixed(1)}s
+                  </span>
+                </div>
 
                 {/* Chord Name (with Slash Chord support) */}
-                <span className="text-sm font-bold text-white tracking-wide">
+                <span className="text-sm font-bold text-white tracking-wide my-0.5">
                   {chord.chord}
                 </span>
 

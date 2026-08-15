@@ -30,6 +30,7 @@ class AnalyzeRequest(BaseModel):
 class ReanalyzeHarmonyRequest(BaseModel):
     task_id: str
     stems: List[str]
+    bpm: Optional[float] = None
 
 @router.post("/")
 async def analyze_phrase(request: AnalyzeRequest):
@@ -56,7 +57,12 @@ async def analyze_phrase(request: AnalyzeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Audio slicing failed: {str(e)}")
 
-    # 2. 6-Stem neural separation (htdemucs_6s)
+    # 2. Global analysis (rhythm BPM calculation & timbre on sliced audio)
+    rhythm_res = analyze_rhythm(str(sliced_audio_path))
+    timbre_res = analyze_timbre(str(sliced_audio_path))
+    detected_bpm = float(rhythm_res.get("bpm", 120.0))
+
+    # 3. 6-Stem neural separation (htdemucs_6s)
     stem_dir = task_dir / "stems"
     default_6_stems = ["vocals", "bass", "drums", "guitar", "piano", "other"]
     stems_to_separate = request.stems if request.stems else default_6_stems
@@ -66,11 +72,14 @@ async def analyze_phrase(request: AnalyzeRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Demucs 6-stem separation failed: {str(e)}")
 
-    analysis_results = {}
+    analysis_results = {
+        "rhythm": rhythm_res,
+        "timbre": timbre_res
+    }
     all_notes = []
     stems_info = []
 
-    # 3. Process each stem (Audio to MIDI)
+    # 4. Process each stem (Audio to MIDI)
     midi_paths = {}
     melody_results = {}
     combined_pm = pretty_midi.PrettyMIDI()
@@ -110,14 +119,14 @@ async def analyze_phrase(request: AnalyzeRequest):
     except Exception as e:
         print(f"Failed to write combined MIDI: {e}")
 
-    # 4. Multi-Stem Harmonic Fusion Analysis (Bass + Piano + Guitar + Other + Vocals)
-    harmony_res = analyze_harmony(midi_paths)
+    # 5. Multi-Stem Harmonic Fusion Analysis (Bass + Piano + Guitar + Other + Vocals) with detected BPM
+    harmony_res = analyze_harmony(midi_paths, bpm=detected_bpm)
     if "error" not in harmony_res:
         analysis_results["harmony"] = harmony_res
     else:
         for candidate in ["piano", "guitar", "other"]:
             if candidate in midi_paths and Path(midi_paths[candidate]).exists():
-                single_res = analyze_harmony(str(midi_paths[candidate]))
+                single_res = analyze_harmony(str(midi_paths[candidate]), bpm=detected_bpm)
                 if "error" not in single_res:
                     analysis_results["harmony"] = single_res
                     break
@@ -128,13 +137,6 @@ async def analyze_phrase(request: AnalyzeRequest):
             analysis_results["melody"] = melody_results[preferred]
             break
 
-    # 5. Global analysis (rhythm, timbre on sliced audio)
-    rhythm_res = analyze_rhythm(str(sliced_audio_path))
-    timbre_res = analyze_timbre(str(sliced_audio_path))
-    
-    analysis_results["rhythm"] = rhythm_res
-    analysis_results["timbre"] = timbre_res
-    
     # 6. Generate Report
     report = generate_report(analysis_results)
     
@@ -159,7 +161,7 @@ async def reanalyze_harmony_custom(request: ReanalyzeHarmonyRequest):
     """
     On-demand instantaneous harmony re-analysis:
     Takes selected stems (e.g. ['bass', 'other']) and re-computes chords, key, and progressions
-    without re-running expensive Demucs separation.
+    with Bar.Beat alignment based on phrase BPM.
     """
     task_dir = OUTPUT_DIR / request.task_id
     if not task_dir.exists():
@@ -174,7 +176,19 @@ async def reanalyze_harmony_custom(request: ReanalyzeHarmonyRequest):
     if not midi_paths:
         raise HTTPException(status_code=400, detail="No valid MIDI files found for requested stems")
         
-    harmony_res = analyze_harmony(midi_paths)
+    # Read saved BPM if available
+    bpm = request.bpm
+    if bpm is None:
+        report_file = task_dir / "report.json"
+        if report_file.exists():
+            try:
+                with open(report_file) as f:
+                    data = json.load(f)
+                    bpm = data.get("rhythm", {}).get("bpm")
+            except Exception:
+                pass
+                
+    harmony_res = analyze_harmony(midi_paths, bpm=bpm)
     if "error" in harmony_res:
         raise HTTPException(status_code=500, detail=harmony_res["error"])
         

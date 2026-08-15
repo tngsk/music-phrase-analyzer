@@ -49,15 +49,38 @@ def detect_progressions(roman_sequence: List[str]) -> List[Dict[str, Union[str, 
             
     return matches
 
-def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict:
+def calculate_bar_beat(time_sec: float, bpm: float = 120.0) -> tuple[int, float, str]:
+    """
+    Convert seconds to Bar.Beat notation (e.g. 1.1, 1.3, 2.1, 2.3).
+    Assuming 4/4 time signature.
+    """
+    seconds_per_beat = 60.0 / max(30.0, min(300.0, bpm))
+    total_beats = time_sec / seconds_per_beat
+    
+    # Quantize to 8th note grid (0.5 beats)
+    quantized_beat = round(total_beats * 2.0) / 2.0
+    
+    measure = int(quantized_beat // 4) + 1
+    beat_in_measure = int(quantized_beat % 4) + 1
+    is_offbeat = (quantized_beat % 1.0) != 0
+    
+    bar_beat_str = f"{measure}.{beat_in_measure}&" if is_offbeat else f"{measure}.{beat_in_measure}"
+    return measure, beat_in_measure, bar_beat_str
+
+def analyze_harmony(
+    midi_input: Union[str, Dict[str, Union[str, Path]]], 
+    bpm: Optional[float] = None
+) -> dict:
     """
     Multi-Stem Harmonic Fusion Analysis:
     Combines Bass (root/bassline foundation) with harmonic upper stems (Piano, Guitar, Other, Vocals)
     into a unified music21 Score and executes chordify() for 100% precise chord and key detection.
-    Supports slash chords (e.g. C/E, G/B, F/G) and strict Fail-Fast error reporting.
+    Computes DAW-style Bar.Beat (e.g. 1.1, 2.1) timing based on detected BPM.
     """
     score = music21.stream.Score()
     note_count = 0
+    
+    effective_bpm = bpm if (bpm is not None and bpm > 0) else 120.0
     
     # Normalize input: either a single midi path or a dictionary of stem_name -> midi_path
     stem_midi_map: Dict[str, str] = {}
@@ -94,7 +117,6 @@ def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict
                     continue
                 for n in inst.notes:
                     m21_note = music21.note.Note(n.pitch)
-                    # Duration in quarter notes
                     dur_q = max(0.25, (n.end - n.start) * 2.0)
                     m21_note.quarterLength = dur_q
                     part.insert(n.start * 2.0, m21_note)
@@ -108,6 +130,8 @@ def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict
 
     if note_count == 0:
         return {
+            "key": "Unknown",
+            "bpm": round(effective_bpm, 1),
             "chords": [],
             "progressions": [],
             "detected_patterns": []
@@ -124,39 +148,30 @@ def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict
         roman_sequence = []
         
         for c in chordified.getElementsByClass('Chord'):
-            # Filter out very brief transient chords (< 0.25 quarterLength)
             if c.quarterLength < 0.2:
                 continue
                 
             try:
-                # Roman numeral analysis
                 rn = music21.roman.romanNumeralFromChord(c, key)
                 norm_rn = normalize_roman(rn.figure)
                 
                 if not roman_sequence or roman_sequence[-1] != norm_rn:
                     roman_sequence.append(norm_rn)
                 
-                # Function mapping
                 func = "Tonic"
                 if rn.scaleDegree in [4, 2]:
                     func = "Subdominant"
                 elif rn.scaleDegree in [5, 7]:
                     func = "Dominant"
-                elif rn.scaleDegree == 6:
-                    func = "Tonic"
-                elif rn.scaleDegree == 3:
+                elif rn.scaleDegree in [6, 3]:
                     func = "Tonic"
                     
-                # Chord naming with Slash Chord (Bass Note) support
                 chord_name = c.pitchedCommonName
                 root_name = c.root().name
                 bass_name = c.bass().name
                 
-                # Format common readable chord name (e.g. C, Cmaj7, Am, Dm7)
-                # If bass is different from root, add slash chord notation (e.g. C/E, G/B, F/G)
                 display_chord = chord_name
                 if hasattr(c, 'commonName') and c.commonName:
-                    # Clean up music21 common names into standard DAW symbols
                     sym = c.root().name
                     if "minor" in c.commonName:
                         sym += "m"
@@ -178,8 +193,14 @@ def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict
                         sym += f"/{bass_name}"
                     display_chord = sym
                     
+                c_time_sec = round(float(c.offset) / 2.0, 2)
+                measure, beat_in_measure, bar_beat_str = calculate_bar_beat(c_time_sec, effective_bpm)
+                
                 chords_out.append({
-                    "time": round(float(c.offset) / 2.0, 2), # Convert back from quarter length to seconds
+                    "time": c_time_sec,
+                    "measure": measure,
+                    "beat": beat_in_measure,
+                    "bar_beat": bar_beat_str,
                     "chord": display_chord,
                     "roman": rn.figure,
                     "function": func,
@@ -196,6 +217,7 @@ def analyze_harmony(midi_input: Union[str, Dict[str, Union[str, Path]]]) -> dict
              
         return {
             "key": key.name if key else "Unknown",
+            "bpm": round(effective_bpm, 1),
             "chords": chords_out,
             "progressions": prog_names,
             "detected_patterns": detected
