@@ -2,12 +2,13 @@ import { useState, useRef, useEffect } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin, { Region } from 'wavesurfer.js/dist/plugins/regions.js'
 import { StemInfo, AudioSubRegion } from '../types/analysis'
-import { Play, Pause, Square, Repeat, Download, Volume2, Music2, Layers } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Download, Volume2, Music2, Layers, XCircle } from 'lucide-react'
 
 interface Props {
   stems: StemInfo[];
   taskId: string | null;
   activeSubRegion?: AudioSubRegion | null;
+  onClearSubRegion?: () => void;
 }
 
 const STEM_CONFIG: Record<string, { 
@@ -84,6 +85,13 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  
+  // Custom drag selection range within this stem (if set)
+  const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null);
+  const customRangeRef = useRef(customRange);
+  useEffect(() => {
+    customRangeRef.current = customRange;
+  }, [customRange]);
 
   const isDrum = stem.stem.toLowerCase() === 'drums';
 
@@ -101,33 +109,31 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
     isLoopingRef.current = isLooping;
   }, [isLooping]);
 
-  const activeSubRegionRef = useRef(activeSubRegion);
-  useEffect(() => {
-    activeSubRegionRef.current = activeSubRegion;
-  }, [activeSubRegion]);
-
   // Synchronize chord sub-region highlight on stem mini-waveform
   useEffect(() => {
     if (!wavesurfer.current || !regionsPlugin.current || !isLoaded) return;
 
-    regionsPlugin.current.clearRegions();
-
+    // If a global chord sub-region is passed, display it unless custom range is actively set
     if (activeSubRegion) {
+      regionsPlugin.current.clearRegions();
       const reg = regionsPlugin.current.addRegion({
         start: activeSubRegion.startRel,
         end: activeSubRegion.endRel,
         color: 'rgba(168, 85, 247, 0.35)', // Purple highlight
-        drag: false,
-        resize: false,
+        drag: true,
+        resize: true,
       });
       activeRegion.current = reg;
+      setCustomRange({ start: activeSubRegion.startRel, end: activeSubRegion.endRel });
       wavesurfer.current.setTime(activeSubRegion.startRel);
     } else {
+      regionsPlugin.current.clearRegions();
       activeRegion.current = null;
+      setCustomRange(null);
     }
   }, [activeSubRegion, isLoaded]);
 
-  // Initialize WaveSurfer
+  // Initialize WaveSurfer with draggable regions
   useEffect(() => {
     if (!containerRef.current || !stem.audio_url) return;
 
@@ -149,6 +155,11 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
     });
     wavesurfer.current = ws;
 
+    // Enable drag selection on waveform
+    regions.enableDragSelection({
+      color: 'rgba(168, 85, 247, 0.35)',
+    });
+
     ws.on('ready', () => {
       setDuration(ws.getDuration());
       setIsLoaded(true);
@@ -161,9 +172,10 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
       setCurrentTime(time);
       if (!ws.isPlaying()) return;
 
-      if (activeSubRegionRef.current) {
-        const subEnd = activeSubRegionRef.current.endRel;
-        const subStart = activeSubRegionRef.current.startRel;
+      const activeBoundary = customRangeRef.current;
+      if (activeBoundary) {
+        const subEnd = activeBoundary.end;
+        const subStart = activeBoundary.start;
 
         if (time >= subEnd) {
           if (isLoopingRef.current) {
@@ -180,12 +192,27 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
 
     ws.on('finish', () => {
       if (isLoopingRef.current) {
-        const restartTime = activeSubRegionRef.current ? activeSubRegionRef.current.startRel : 0;
+        const restartTime = customRangeRef.current ? customRangeRef.current.start : 0;
         ws.setTime(restartTime);
         ws.play().catch(console.error);
       } else {
         setIsPlaying(false);
       }
+    });
+
+    // Handle user manual drag selection on stem waveform
+    regions.on('region-created', (region) => {
+      const all = regions.getRegions();
+      all.forEach((r) => {
+        if (r.id !== region.id) r.remove();
+      });
+      activeRegion.current = region;
+      setCustomRange({ start: region.start, end: region.end });
+    });
+
+    regions.on('region-updated', (region) => {
+      activeRegion.current = region;
+      setCustomRange({ start: region.start, end: region.end });
     });
 
     return () => {
@@ -201,9 +228,9 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
       wavesurfer.current.pause();
       setIsPlaying(false);
     } else {
-      const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
+      const startTime = customRange ? customRange.start : 0;
       const curTime = wavesurfer.current.getCurrentTime();
-      if (activeSubRegion && (curTime < startTime || curTime >= activeSubRegion.endRel)) {
+      if (customRange && (curTime < startTime || curTime >= customRange.end)) {
         wavesurfer.current.setTime(startTime);
       }
       try {
@@ -218,13 +245,22 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
   const handleStop = () => {
     if (!wavesurfer.current) return;
     wavesurfer.current.pause();
-    const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
+    const startTime = customRange ? customRange.start : 0;
     wavesurfer.current.setTime(startTime);
     setIsPlaying(false);
   };
 
   const toggleLoop = () => {
     setIsLooping(!isLooping);
+  };
+
+  // Clear Selection for this Stem
+  const handleClearSelection = () => {
+    if (regionsPlugin.current) {
+      regionsPlugin.current.clearRegions();
+    }
+    activeRegion.current = null;
+    setCustomRange(null);
   };
 
   const handleDownload = (url: string, filename: string) => {
@@ -242,7 +278,7 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
 
   return (
     <div className={`p-4 rounded-xl border transition shadow-md flex flex-col justify-between gap-3 ${cfg.border} ${cfg.bg} hover:border-gray-500`}>
-      {/* Header Info */}
+      {/* Header Info with Range Clear */}
       <div className="flex justify-between items-center">
         <div>
           <div className={`font-semibold text-sm ${cfg.color} flex items-center gap-1.5`}>
@@ -254,15 +290,32 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
           </div>
         </div>
 
-        <div className="text-[11px] font-mono text-gray-400 bg-gray-900/80 px-2 py-0.5 rounded border border-gray-700">
-          {currentTime.toFixed(1)}s / {duration.toFixed(1)}s
+        <div className="flex items-center gap-1.5">
+          {customRange && (
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="text-[11px] text-purple-300 hover:text-white bg-purple-950/80 hover:bg-purple-900 border border-purple-700/70 px-2 py-0.5 rounded flex items-center gap-1 transition cursor-pointer"
+              title="このトラックの選択範囲を解除して全体再生に戻す"
+            >
+              <XCircle size={11} />
+              <span>選択解除</span>
+            </button>
+          )}
+
+          <div className="text-[11px] font-mono text-gray-400 bg-gray-900/80 px-2 py-0.5 rounded border border-gray-700">
+            {customRange 
+              ? `${customRange.start.toFixed(1)}s – ${customRange.end.toFixed(1)}s` 
+              : `${currentTime.toFixed(1)}s / ${duration.toFixed(1)}s`}
+          </div>
         </div>
       </div>
 
-      {/* Mini Waveform Container with Sync Region Highlight */}
+      {/* Mini Waveform Container with Draggable/Resizable Regions */}
       <div 
         ref={containerRef} 
-        className="w-full bg-gray-950/80 rounded border border-gray-800 cursor-pointer overflow-hidden" 
+        className="w-full bg-gray-950/80 rounded border border-gray-800 cursor-crosshair overflow-hidden" 
+        title="波形上をドラッグして自由な範囲を選択できます"
       />
 
       {/* Playback Controls & Downloads */}
@@ -280,7 +333,7 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
             }`}
           >
             {isPlaying ? <Pause size={13} /> : <Play size={13} />}
-            <span>{isPlaying ? 'Pause' : 'Play'}</span>
+            <span>{isPlaying ? 'Pause' : customRange ? 'Play Range' : 'Play'}</span>
           </button>
 
           <button
@@ -301,7 +354,7 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
                 ? 'bg-green-600/30 border-green-500 text-green-300 font-semibold'
                 : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
             }`}
-            title="ループ再生"
+            title={isLooping ? 'ループ解除' : '選択範囲/全体をループ再生'}
           >
             <Repeat size={13} />
           </button>
@@ -334,7 +387,7 @@ function StemCard({ stem, activeSubRegion }: StemCardProps) {
   );
 }
 
-export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
+export default function StemMixer({ stems, taskId, activeSubRegion, onClearSubRegion }: Props) {
   const handleDownload = (url: string, filename: string) => {
     const link = document.createElement('a');
     link.href = url;
@@ -348,7 +401,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
 
   return (
     <div className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md space-y-4">
-      {/* Top Header */}
+      {/* Top Header with Global Clear Selection */}
       <div className="flex flex-wrap justify-between items-center gap-3 border-b border-gray-700/80 pb-3">
         <div>
           <h3 className="text-base font-semibold text-white flex items-center gap-2">
@@ -356,33 +409,47 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
             <span>Separated Audio Stems (6 Stems)</span>
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">
-            コード区間に同期した波形ハイライト・個別パート試聴・WAV / MIDI ダウンロード
+            波形上のドラッグで自由な範囲選択 ＆ 個別パート試聴・WAV / MIDI ダウンロード
           </p>
         </div>
 
-        {taskId && (
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          {activeSubRegion && onClearSubRegion && (
             <button
               type="button"
-              onClick={() => handleDownload(`http://localhost:8000/export/midi/${taskId}/all`, 'all_stems.mid')}
-              className="flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-600/60 text-purple-200 text-xs font-semibold px-2.5 py-1.5 rounded-md shadow-xs transition cursor-pointer"
-              title="全パートのMIDIを1つのファイルに統合してダウンロード"
+              onClick={onClearSubRegion}
+              className="flex items-center gap-1 bg-gray-900 hover:bg-gray-700 text-gray-300 hover:text-white text-xs px-2.5 py-1.5 rounded-md border border-gray-700 transition cursor-pointer"
+              title="コード選択ハイライトを全ステムで解除"
             >
-              <Music2 size={13} />
-              <span>全パート統合 MIDI</span>
+              <XCircle size={13} className="text-purple-400" />
+              <span>全パート選択解除</span>
             </button>
+          )}
 
-            <button
-              type="button"
-              onClick={() => handleDownload(`http://localhost:8000/export/audio/${taskId}/sliced`, 'sliced_phrase.wav')}
-              className="flex items-center gap-1 bg-gray-900 hover:bg-gray-700 text-gray-200 text-xs font-medium px-2.5 py-1.5 rounded-md border border-gray-600/80 transition cursor-pointer"
-              title="切り出したフレーズ全体のWAV音声をダウンロード"
-            >
-              <Download size={13} />
-              <span>フレーズ全体 WAV</span>
-            </button>
-          </div>
-        )}
+          {taskId && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleDownload(`http://localhost:8000/export/midi/${taskId}/all`, 'all_stems.mid')}
+                className="flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-600/60 text-purple-200 text-xs font-semibold px-2.5 py-1.5 rounded-md shadow-xs transition cursor-pointer"
+                title="全パートのMIDIを1つのファイルに統合してダウンロード"
+              >
+                <Music2 size={13} />
+                <span>全パート統合 MIDI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDownload(`http://localhost:8000/export/audio/${taskId}/sliced`, 'sliced_phrase.wav')}
+                className="flex items-center gap-1 bg-gray-900 hover:bg-gray-700 text-gray-200 text-xs font-medium px-2.5 py-1.5 rounded-md border border-gray-600/80 transition cursor-pointer"
+                title="切り出したフレーズ全体のWAV音声をダウンロード"
+              >
+                <Download size={13} />
+                <span>フレーズ全体 WAV</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 6-Stem Waveform Cards Grid */}

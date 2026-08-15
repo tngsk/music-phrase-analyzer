@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin, { Region } from 'wavesurfer.js/dist/plugins/regions.js'
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js'
-import { Play, Pause, Square, Repeat, Volume2, UploadCloud } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Volume2, UploadCloud, Maximize2 } from 'lucide-react'
 
 interface Props {
   audioUrl?: string;
@@ -408,11 +408,20 @@ export default function AudioTimeline({ audioUrl, onFileSelect, onRangeChange, t
             </button>
           </div>
 
-          <div className="flex gap-1.5 text-xs text-gray-400 items-center">
+          {/* Range Presets including Full Selection */}
+          <div className="flex flex-wrap gap-1.5 text-xs text-gray-400 items-center">
              <span className="text-[11px]">Presets:</span>
              <button onClick={() => setPresetRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–5s</button>
              <button onClick={() => setPresetRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–10s</button>
              <button onClick={() => setPresetRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">5–15s</button>
+             <button 
+               onClick={() => setPresetRange(0, duration > 0 ? duration : 9999)} 
+               className="hover:text-white px-2.5 py-0.5 bg-blue-900/70 hover:bg-blue-800 text-blue-200 border border-blue-600/60 rounded text-[11px] font-semibold flex items-center gap-1 transition cursor-pointer shadow-xs"
+               title="楽曲の最初から最後まで全範囲を選択"
+             >
+               <Maximize2 size={11} />
+               <span>全選択 (0–{duration > 0 ? duration.toFixed(1) : '末尾'}s)</span>
+             </button>
           </div>
         </div>
       )}

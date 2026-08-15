@@ -151,6 +151,11 @@ function App() {
     })
   }
 
+  const handleClearSubRegion = () => {
+    setActiveSubRegion(null)
+    setActiveChordIndex(null)
+  }
+
   return (
     <div className="container mx-auto p-4 max-w-5xl space-y-6 pb-20">
       <header className="border-b border-gray-700 pb-4 flex flex-wrap justify-between items-center gap-4">
@@ -259,11 +264,12 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-5 animate-fade-in">
-            {/* 6 Separated Stems with Sync Region Highlight & Independent Playback */}
+            {/* 6 Separated Stems with Sync Region Highlight, Manual Drag Selection & Clear Controls */}
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 
               activeSubRegion={activeSubRegion}
+              onClearSubRegion={handleClearSubRegion}
             />
           </section>
         )}
