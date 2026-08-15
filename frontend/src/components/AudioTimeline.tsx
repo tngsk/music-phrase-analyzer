@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin, { Region } from 'wavesurfer.js/dist/plugins/regions.js'
 import TimelinePlugin from 'wavesurfer.js/dist/plugins/timeline.js'
-import { Play, Square, Repeat, Volume2 } from 'lucide-react'
+import { Play, Pause, Square, Repeat, Volume2 } from 'lucide-react'
 
 interface Props {
   onRangeChange?: (start: number, end: number) => void;
@@ -17,6 +17,11 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
   const activeRegion = useRef<Region | null>(null)
   
   const [range, setRange] = useState({ start: 0, end: 10 })
+  const rangeRef = useRef(range)
+  useEffect(() => {
+    rangeRef.current = range;
+  }, [range]);
+
   const [duration, setDuration] = useState<number>(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLooping, setIsLooping] = useState(false)
@@ -39,7 +44,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
     handleRangeChangeRef.current = handleRangeChange;
   }, [handleRangeChange]);
 
-  // Initialize WaveSurfer instance once
+  // Initialize WaveSurfer instance
   useEffect(() => {
     if (!containerRef.current || !timelineRef.current) return;
 
@@ -102,6 +107,23 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
     ws.on('pause', () => setIsPlaying(false));
     ws.on('finish', () => setIsPlaying(false));
 
+    // Timeupdate boundary monitoring for precise region playback and looping
+    ws.on('timeupdate', (currentTime) => {
+      const currentEnd = rangeRef.current.end;
+      const currentStart = rangeRef.current.start;
+
+      if (currentTime >= currentEnd) {
+        if (isLoopingRef.current) {
+          ws.setTime(currentStart);
+          ws.play().catch(console.error);
+        } else {
+          ws.pause();
+          ws.setTime(currentStart);
+          setIsPlaying(false);
+        }
+      }
+    });
+
     regions.on('region-created', (region) => {
       // Keep only one active selection region
       const all = regions.getRegions();
@@ -119,16 +141,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
       handleRangeChangeRef.current(region.start, region.end);
     });
 
-    regions.on('region-out', (region) => {
-      if (activeRegion.current?.id === region.id) {
-        if (isLoopingRef.current) {
-          region.play();
-        } else {
-          ws.pause();
-        }
-      }
-    });
-
     return () => {
       ws.destroy();
       wavesurfer.current = null;
@@ -139,20 +151,34 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
   useEffect(() => {
     if (wavesurfer.current && audioUrl) {
       setIsLoaded(false);
+      setIsPlaying(false);
       wavesurfer.current.load(audioUrl);
     }
   }, [audioUrl]);
 
-  const handlePlayPause = () => {
+  const handlePlayRegion = async () => {
     if (!wavesurfer.current) return;
-    if (activeRegion.current) {
-      if (isPlaying) {
-        wavesurfer.current.pause();
-      } else {
-        activeRegion.current.play();
-      }
-    } else {
-      wavesurfer.current.playPause();
+    
+    if (isPlaying) {
+      wavesurfer.current.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    const start = range.start;
+    const end = range.end;
+    const currentTime = wavesurfer.current.getCurrentTime();
+
+    // If playhead is outside region, move to region start
+    if (currentTime < start || currentTime >= end) {
+      wavesurfer.current.setTime(start);
+    }
+
+    try {
+      await wavesurfer.current.play();
+      setIsPlaying(true);
+    } catch (err) {
+      console.error("WaveSurfer play error:", err);
     }
   };
 
@@ -160,7 +186,8 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
     if (!wavesurfer.current) return;
     setIsLooping(false);
     wavesurfer.current.pause();
-    wavesurfer.current.seekTo(activeRegion.current ? activeRegion.current.start / (duration || 1) : 0);
+    wavesurfer.current.setTime(range.start);
+    setIsPlaying(false);
   };
 
   const toggleLoop = () => {
@@ -187,6 +214,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
       });
     }
     handleRangeChange(start, safeEnd);
+    wavesurfer.current.setTime(start);
   };
 
   return (
@@ -222,7 +250,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
         <div className="mt-4 flex flex-wrap gap-4 items-center justify-between">
           <div className="flex items-center gap-2">
             <button 
-              onClick={handlePlayPause}
+              onClick={handlePlayRegion}
               disabled={!isLoaded}
               className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-sm font-medium shadow ${
                 isPlaying 
@@ -230,7 +258,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl }: Props) {
                   : 'bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-700'
               }`}
             >
-              {isPlaying ? <Square size={16} /> : <Play size={16} />}
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
               {isPlaying ? 'Pause' : 'Play Region'}
             </button>
             
