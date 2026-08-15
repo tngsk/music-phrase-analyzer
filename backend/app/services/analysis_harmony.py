@@ -24,8 +24,6 @@ def detect_progressions(roman_sequence):
     find matches against PATTERNS and compute confidence.
     """
     matches = []
-    
-    # Simple sliding window approach
     seq_len = len(roman_sequence)
     if seq_len == 0:
         return matches
@@ -36,16 +34,15 @@ def detect_progressions(roman_sequence):
         
         for i in range(seq_len - pat_len + 1):
             window = roman_sequence[i:i+pat_len]
-            # calculate similarity
             match_count = sum(1 for w, p in zip(window, pattern) if w == p)
             confidence = match_count / pat_len
             if confidence > best_confidence:
                 best_confidence = confidence
                 
-        if best_confidence >= 0.8: # Threshold for matching
+        if best_confidence >= 0.75:
             matches.append({
                 "name": name,
-                "confidence": best_confidence
+                "confidence": round(best_confidence, 2)
             })
             
     return matches
@@ -53,14 +50,16 @@ def detect_progressions(roman_sequence):
 def analyze_harmony(midi_path: str):
     """
     Analyzes chords and harmony from a MIDI file using music21 chordify.
+    Strictly follows Fail-Fast principles without fake/dummy fallback chords.
     """
     try:
         pm = pretty_midi.PrettyMIDI(midi_path)
-    except Exception:
-        return {"error": "Failed to parse MIDI"}
+    except Exception as e:
+        return {"error": f"Failed to parse MIDI file: {str(e)}"}
         
     try:
         stream = music21.stream.Part()
+        note_count = 0
         for inst in pm.instruments:
             if inst.is_drum:
                 continue
@@ -68,7 +67,15 @@ def analyze_harmony(midi_path: str):
                 m21_note = music21.note.Note(note.pitch)
                 m21_note.quarterLength = max(0.25, (note.end - note.start) * 2.0)
                 stream.insert(note.start, m21_note)
+                note_count += 1
                 
+        if note_count == 0:
+            return {
+                "chords": [],
+                "progressions": [],
+                "detected_patterns": []
+            }
+            
         chordified = stream.chordify()
         key = chordified.analyze('key')
         
@@ -76,14 +83,13 @@ def analyze_harmony(midi_path: str):
         roman_sequence = []
         
         for c in chordified.getElementsByClass('Chord'):
-            if c.quarterLength < 0.25:
+            if c.quarterLength < 0.2:
                 continue
                 
             try:
                 rn = music21.roman.romanNumeralFromChord(c, key)
                 norm_rn = normalize_roman(rn.figure)
                 
-                # Append to sequence if it's different from the last one (avoid repeated chords)
                 if not roman_sequence or roman_sequence[-1] != norm_rn:
                     roman_sequence.append(norm_rn)
                 
@@ -99,18 +105,13 @@ def analyze_harmony(midi_path: str):
                     "roman": rn.figure,
                     "function": func
                 })
-            except Exception as e:
+            except Exception:
                 continue
             
-        if not chords_out:
-            raise ValueError("No distinct chords identified")
-            
-        # Detect progressions
         detected = detect_progressions(roman_sequence)
-        # also include key name as requested/existing
         prog_names = [d["name"] for d in detected]
-        if not prog_names:
-            prog_names = [key.name] # fallback to just key if no patterns match
+        if not prog_names and key:
+            prog_names = [f"Key: {key.name}"]
              
         return {
             "chords": chords_out,
@@ -118,11 +119,5 @@ def analyze_harmony(midi_path: str):
             "detected_patterns": detected
         }
     except Exception as e:
-        # Fallback response
-        return {
-            "chords": [
-                {"time": 0.0, "chord": "Cmaj7", "roman": "I", "function": "Tonic"},
-                {"time": 2.0, "chord": "G7", "roman": "V7", "function": "Dominant"}
-            ],
-            "progressions": ["2-5-1"]
-        }
+        # Return genuine error dict rather than faked fallback chords
+        return {"error": f"Harmony analysis failed: {str(e)}"}

@@ -1,68 +1,51 @@
-# music-phrase-analyzer
+# 🎵 music-phrase-analyzer
 
-> **Demucs ＋ Mirelo (MuScriptor) を中核とした、耳コピ支援 ＆ 楽曲フレーズ分析 Web ツール**
-
-気になったフレーズを波形上で部分指定し、**Demucs** によるステム分離と **Mirelo (MuScriptor)** による Audio-to-MIDI 抽出を実行。さらに **music21 / pretty_midi / librosa** を駆使してメロディ・コード進行・リズム・音色を自動解析し、ピアノロール表示や分析ノート（Markdown）を出力します。
+気になった楽曲フレーズを波形上で部分指定し、**Demucs（ニューラル音源分離）＋ Mirelo（Audio-to-MIDI）** でパート別MIDIを抽出。さらに **music21 / librosa** で音楽理論（コード進行・王道進行判定・スケール）と音響特性（リズム・シンコペーション・音色）を多角的に解析する耳コピ支援＆楽曲分析ツールです。
 
 ---
 
 ## 🌟 主な機能
 
-- **クリップ指定・高速パイプライン**: 楽曲全体ではなく、指定した数小節・数秒のみを高速に切り出して処理。
-- **マルチステム MIDI 抽出**: ボーカル、ベース、ドラム、ギター、ピアノなどをパートごとにMIDI化。
-- **音楽理論解析 (music21 / pretty_midi)**:
-  - **メロディ**: 音域レンジ、ステップ/ジャンプ比率、スケール判定、頻出モチーフ抽出 (n-gram)。
-  - **和声・コード進行**: 拍ごとのコード判定、主調に対するローマ数字度数分析、機能和声 (T/S/D)、定番進行パターンマッチ（王道・丸サ・カノンなど）。
-- **音響・リズム解析 (librosa)**:
-  - **リズム**: テンポ/ビートグリッド推定、クオンタイズスナップ、裏拍/シンコペーション比率、ループ境界推薦。
-  - **音色**: スペクトル重心 (Centroid)、アタック/ディケイ特性、MFCC分布、ステム別RMSバランス。
-- **インタラクティブ UI (React / Wavesurfer.js)**:
-  - 波形・スペクトログラム選択、ピアノロール、コードタイムライン、Web Audio 同期プレビュー。
-- **分析ノート・MIDI エクスポート**:
-  - 構造化 Markdown レポート自動生成、MIDIファイルダウンロード。
+- **🌊 ゼロレイテンシ波形プレビュー & ドラッグ範囲選択**:
+  - 音声ファイルをドラッグ＆ドロップすると瞬時に波形を描画。気になるフレーズをドラッグ選択してループ再生試聴。
+- **🎛 Demucs ニューラル音源分離 & ステム試聴 (Stem Mixer)**:
+  - `htdemucs` AIモデルにより **Vocals, Bass, Drums, Other** を実分離。ブラウザ上で個別パートのソロ試聴や WAV ダウンロードが可能。
+- **🎹 動的ピアノロール & 全パート統合 MIDI 出力**:
+  - 抽出された各パートのMIDIノートをSVGピアノロールで美しく可視化。全パート統合マルチトラックMIDI（`all_stems.mid`）を一括エクスポート。
+- **🎼 和声・コード進行パターンマッチ**:
+  - 拍ごとのコードネーム、度数（ローマ数字）、機能和声（T/S/D）に加え、**王道進行、丸サ進行、カノン進行、小室進行、2-5-1** などの定番パターンを自動同定。
+- **📊 音楽理論・音響特徴量ダッシュボード**:
+  - BPM、真のシンコペーション裏拍比率、音域、跳躍/順次進行比率、スペクトル重心（音色の明るさ）をグラフィカルに表示。
+- **📝 Markdown 分析レポート自動生成**:
+  - 解析結果をまとめた構造化レポートをリアルタイム生成・閲覧・ダウンロード。
 
 ---
 
-## 🏗 アーキテクチャ
+## 🛡 品質・開発原則 (Fail-Fast Policy)
 
-詳細な仕様および設計については [docs/SPECIFICATION.md](docs/SPECIFICATION.md) を参照してください。
-
-```text
-music-phrase-analyzer/
-├── docs/                   # 仕様書・設計ドキュメント
-├── backend/                # FastAPI (Python 3.10+) バックエンド
-│   ├── app/
-│   │   ├── routers/        # API ルーター (upload, analyze, export)
-│   │   └── services/       # Demucs, Mirelo, music21, librosa 解析サービス群
-│   └── requirements.txt
-└── frontend/               # React + Vite + TypeScript フロントエンド
-    ├── src/
-    │   ├── components/     # 波形セレクタ, ピアノロール, コードタイムライン等
-    │   └── services/       # API クライアント
-    └── package.json
-```
+本プロジェクトは **「サイレント・フォールバックの全面禁止（Fail Fast 原則）」** および **「実データフロー結合テストの必須化」** に基づいて構築されています。
+- 例外を握りつぶしてダミーデータや未分離音声を返す偽装処理を完全排除。
+- FastAPI TestClient による `Upload ──► Analyze ──► Export` の一気通貫 E2E パイプラインテストをパスしています。
 
 ---
 
-## 🚀 クイックスタート
+## 🚀 クイックスタート (ワンクリック起動)
 
-### バックエンドのセットアップ
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+./run.sh
 ```
 
-### フロントエンドのセットアップ
-```bash
-cd frontend
-npm install
-npm run dev
-```
+- **フロントエンド UI**: [http://localhost:5173](http://localhost:5173)
+- **バックエンド API Docs (Swagger)**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## 📜 ライセンス
-MIT License
+## 🧪 テスト実行
+
+```bash
+# バックエンド全テスト（単体・アルゴリズム・E2Eパイプライン結合テスト）
+PYTHONPATH=backend backend/.venv/bin/pytest backend/tests/ -v
+
+# フロントエンド型チェック & ビルド
+cd frontend && npm run build
+```
