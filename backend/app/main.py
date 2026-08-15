@@ -9,8 +9,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -26,3 +26,9 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+from app.routers import upload_router, analyze_router, export_router
+
+app.include_router(upload_router)
+app.include_router(analyze_router)
+app.include_router(export_router)
