@@ -25,6 +25,9 @@ function App() {
   const [targetRange, setTargetRange] = useState<{ start: number; end: number; autoPlay?: boolean } | null>(null)
   const [activeSubRegion, setActiveSubRegion] = useState<AudioSubRegion | null>(null)
   const [activeChordIndex, setActiveChordIndex] = useState<number | null>(null)
+  
+  // Mutual exclusion stop signals
+  const [stopStemsSignal, setStopStemsSignal] = useState<number>(0)
 
   const [selectedStems, setSelectedStems] = useState<string[]>([
     "vocals", "bass", "drums", "guitar", "piano", "other"
@@ -47,6 +50,7 @@ function App() {
     setActiveChordIndex(null)
     setActiveSubRegion(null)
     setTargetRange(null)
+    setStopStemsSignal(Date.now())
     
     setIsUploading(true)
     try {
@@ -70,6 +74,7 @@ function App() {
     setIsAnalyzing(true)
     setActiveChordIndex(null)
     setActiveSubRegion(null)
+    setStopStemsSignal(Date.now())
     
     // Lock the analyzed range to prevent misalignment if timeline region is moved later
     const currentStart = timeRange.start
@@ -123,6 +128,9 @@ function App() {
   }
 
   const handleChordClick = (chordStartRel: number, chordEndRel: number, index: number) => {
+    // 1. Immediately force-stop any running stem mini waveforms
+    setStopStemsSignal(Date.now())
+
     setActiveChordIndex(index)
     // Map relative chord timestamp to original audio timeline absolute range based on locked analyzedRange
     const absStart = analyzedRange.start + chordStartRel
@@ -200,6 +208,7 @@ function App() {
              onFileSelect={processFile}
              onRangeChange={(start, end) => setTimeRange({ start, end })} 
              targetRange={targetRange}
+             onPlayStart={() => setStopStemsSignal(Date.now())}
            />
 
            {/* Harmony & Chord Progression Timeline (Directly below Audio Timeline) */}
@@ -252,11 +261,12 @@ function App() {
 
         {analysisResults && (
           <section className="space-y-5 animate-fade-in">
-            {/* 6-Track Synchronized Stem Mixer with Solo/Mute and Region Highlighting */}
+            {/* 6-Track Synchronized Stem Mixer with Absolute Priority Stop and Solo/Mute */}
             <StemMixer 
               stems={analysisResults.stems || []} 
               taskId={taskId} 
               activeSubRegion={activeSubRegion}
+              forceStopSignal={stopStemsSignal}
             />
           </section>
         )}

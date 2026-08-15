@@ -9,9 +9,10 @@ interface Props {
   audioUrl?: string;
   onFileSelect?: (file: File) => void;
   targetRange?: { start: number; end: number; autoPlay?: boolean } | null;
+  onPlayStart?: () => void;
 }
 
-export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, targetRange }: Props) {
+export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, targetRange, onPlayStart }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const timelineRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -33,8 +34,8 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     isLoopingRef.current = isLooping;
   }, [isLooping]);
 
-  // Guard flag to ignore spurious timeupdate events during seek
   const isSeekingRef = useRef(false)
+  const playTimerRef = useRef<any>(null)
 
   const handleRangeChange = useCallback((start: number, end: number) => {
     const s = Math.max(0, Math.round(start * 100) / 100);
@@ -90,11 +91,15 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
   useEffect(() => {
     if (!targetRange || !wavesurfer.current || !regionsPlugin.current) return;
 
+    if (playTimerRef.current) {
+      clearTimeout(playTimerRef.current);
+    }
+
     const dur = duration || wavesurfer.current.getDuration() || 1;
     const start = Math.max(0, Math.min(targetRange.start, dur));
     const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
 
-    // CRITICAL: Synchronously update rangeRef BEFORE triggering playback
+    // CRITICAL: Synchronously update rangeRef
     rangeRef.current = { start, end };
     setRange({ start, end });
     if (onRangeChange) onRangeChange(start, end);
@@ -111,23 +116,24 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       });
     }
 
-    // Set seeking guard to true so timeupdate won't immediately fire premature cutoff
     isSeekingRef.current = true;
+    wavesurfer.current.pause();
     wavesurfer.current.setTime(start);
 
     if (targetRange.autoPlay) {
-      // Small timeout ensures audio context buffer pointer has moved to new start position
-      setTimeout(() => {
+      if (onPlayStart) onPlayStart();
+      playTimerRef.current = setTimeout(() => {
         if (wavesurfer.current) {
-          wavesurfer.current.play().catch(console.error);
-          setIsPlaying(true);
-          isSeekingRef.current = false;
+          wavesurfer.current.play().then(() => {
+            setIsPlaying(true);
+            isSeekingRef.current = false;
+          }).catch(console.error);
         }
-      }, 30);
+      }, 50);
     } else {
       isSeekingRef.current = false;
     }
-  }, [targetRange, duration, onRangeChange]);
+  }, [targetRange, duration, onRangeChange, onPlayStart]);
 
   // Initialize WaveSurfer instance
   useEffect(() => {
@@ -199,24 +205,24 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       }
     });
 
-    // Timeupdate boundary monitoring for precise region playback and looping
+    // Timeupdate boundary monitoring: Absolute stop when reaching region end
     ws.on('timeupdate', (currentTime) => {
-      if (!ws.isPlaying()) return; // Never process time boundaries if paused
-      if (isSeekingRef.current) return; // Skip boundary check during seek transition
+      if (!ws.isPlaying() || isSeekingRef.current) return;
 
       const currentEnd = rangeRef.current.end;
       const currentStart = rangeRef.current.start;
 
-      // Ignore if currentTime hasn't reached near start yet (stale audio frame)
-      if (currentTime < currentStart - 0.1) return;
+      // Ignore if currentTime hasn't caught up with start position yet
+      if (currentTime < currentStart - 0.05) return;
 
+      // Absolute Stop / Loop Enforcement
       if (currentTime >= currentEnd) {
         if (isLoopingRef.current) {
           ws.setTime(currentStart);
           ws.play().catch(console.error);
         } else {
+          // Hard stop: Pause immediately and do not loop
           ws.pause();
-          ws.setTime(currentStart);
           setIsPlaying(false);
         }
       }
@@ -240,6 +246,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     });
 
     return () => {
+      if (playTimerRef.current) clearTimeout(playTimerRef.current);
       ws.destroy();
       wavesurfer.current = null;
     }
@@ -254,14 +261,18 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     }
   }, [audioUrl]);
 
+  // Absolute Priority Stop Commands
   const handlePlayRegion = async () => {
     if (!wavesurfer.current) return;
     
     if (isPlaying) {
+      // Top priority stop
       wavesurfer.current.pause();
       setIsPlaying(false);
       return;
     }
+
+    if (onPlayStart) onPlayStart();
 
     const start = rangeRef.current.start;
     const end = rangeRef.current.end;
@@ -270,7 +281,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     if (currentTime < start || currentTime >= end) {
       isSeekingRef.current = true;
       wavesurfer.current.setTime(start);
-      setTimeout(() => { isSeekingRef.current = false; }, 30);
+      setTimeout(() => { isSeekingRef.current = false; }, 40);
     }
 
     try {
@@ -283,7 +294,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
 
   const handleStop = () => {
     if (!wavesurfer.current) return;
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
     setIsLooping(false);
+    // Absolute immediate pause
     wavesurfer.current.pause();
     wavesurfer.current.setTime(rangeRef.current.start);
     setIsPlaying(false);
@@ -400,7 +413,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
             <button 
               onClick={handlePlayRegion}
               disabled={!isLoaded}
-              className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-xs font-semibold shadow ${
+              className={`flex items-center gap-1.5 transition px-4 py-2 rounded-lg text-xs font-semibold shadow cursor-pointer ${
                 isPlaying 
                   ? 'bg-amber-600 hover:bg-amber-500 text-white' 
                   : 'bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-700'
@@ -413,7 +426,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
             <button 
               onClick={handleStop}
               disabled={!isLoaded}
-              className="flex items-center gap-1.5 hover:bg-gray-700 transition px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 disabled:opacity-50"
+              className="flex items-center gap-1.5 hover:bg-gray-700 transition px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-xs text-gray-300 disabled:opacity-50 cursor-pointer"
             >
               <Square size={14} /> Stop
             </button>
@@ -421,7 +434,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
             <button 
               onClick={toggleLoop}
               disabled={!isLoaded}
-              className={`flex items-center gap-1.5 transition px-3 py-2 rounded-lg text-xs font-medium border ${
+              className={`flex items-center gap-1.5 transition px-3 py-2 rounded-lg text-xs font-medium border cursor-pointer ${
                 isLooping 
                   ? 'bg-green-600/30 border-green-500 text-green-300 font-semibold' 
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
@@ -433,9 +446,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
 
           <div className="flex gap-1.5 text-xs text-gray-400 items-center">
              <span className="text-[11px]">Presets:</span>
-             <button onClick={() => setFixedRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">0–5s</button>
-             <button onClick={() => setFixedRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">0–10s</button>
-             <button onClick={() => setFixedRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition">5–15s</button>
+             <button onClick={() => setFixedRange(0, 5)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–5s</button>
+             <button onClick={() => setFixedRange(0, 10)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">0–10s</button>
+             <button onClick={() => setFixedRange(5, 15)} className="hover:text-white px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-[11px] transition cursor-pointer">5–15s</button>
           </div>
         </div>
       )}

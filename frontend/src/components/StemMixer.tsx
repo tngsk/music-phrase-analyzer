@@ -8,6 +8,8 @@ interface Props {
   stems: StemInfo[];
   taskId: string | null;
   activeSubRegion?: AudioSubRegion | null;
+  forceStopSignal?: number;
+  onPlayStart?: () => void;
 }
 
 const STEM_CONFIG: Record<string, { 
@@ -76,12 +78,14 @@ interface StemCardProps {
   isSolo: boolean;
   isMuted: boolean;
   activeSubRegion?: AudioSubRegion | null;
+  forceStopSignal?: number;
   onToggleSolo: (stemName: string) => void;
   onToggleMute: (stemName: string) => void;
   onPlaySolo: (stemName: string) => void;
   onPauseSolo: () => void;
   registerWsInstance: (stemName: string, ws: WaveSurfer) => void;
   unregisterWsInstance: (stemName: string) => void;
+  onPlayStart?: () => void;
 }
 
 function StemCard({ 
@@ -92,12 +96,14 @@ function StemCard({
   isSolo, 
   isMuted,
   activeSubRegion,
+  forceStopSignal,
   onToggleSolo, 
   onToggleMute, 
   onPlaySolo, 
   onPauseSolo,
   registerWsInstance,
-  unregisterWsInstance
+  unregisterWsInstance,
+  onPlayStart
 }: StemCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurfer = useRef<WaveSurfer | null>(null);
@@ -141,6 +147,16 @@ function StemCard({
       wavesurfer.current.setVolume(1);
     }
   }, [isMuted]);
+
+  // Force Stop Signal from parent (e.g. chord card click or timeline play)
+  useEffect(() => {
+    if (forceStopSignal && forceStopSignal > 0) {
+      if (wavesurfer.current) {
+        wavesurfer.current.pause();
+      }
+      setIsPlaying(false);
+    }
+  }, [forceStopSignal]);
 
   // Draw synchronized chord sub-region highlight on stem mini-waveform
   useEffect(() => {
@@ -206,13 +222,13 @@ function StemCard({
     ws.on('play', () => setIsPlaying(true));
     ws.on('pause', () => setIsPlaying(false));
 
+    // Timeupdate boundary monitoring: Absolute stop when reaching region end
     ws.on('timeupdate', (time) => {
       setCurrentTime(time);
 
-      // CRITICAL: If paused or seeking, never execute loop / stop logic!
+      // Top priority: Never execute boundary check if not playing or seeking
       if (!ws.isPlaying() || isSeekingRef.current) return;
 
-      // Boundary check for chord sub-region looping
       if (activeSubRegionRef.current) {
         const subEnd = activeSubRegionRef.current.endRel;
         const subStart = activeSubRegionRef.current.startRel;
@@ -226,12 +242,10 @@ function StemCard({
             ws.play().catch(console.error);
             setTimeout(() => { isSeekingRef.current = false; }, 40);
           } else {
+            // Absolute priority stop
             ws.pause();
-            isSeekingRef.current = true;
-            ws.setTime(subStart);
             setIsPlaying(false);
             onPauseSolo();
-            setTimeout(() => { isSeekingRef.current = false; }, 40);
           }
         }
       }
@@ -258,14 +272,17 @@ function StemCard({
     };
   }, [stem.audio_url, stem.stem, cfg.waveColor, cfg.progressColor, registerWsInstance, unregisterWsInstance, onPauseSolo]);
 
+  // Absolute Priority Control Handlers
   const handleTogglePlay = async () => {
     if (!wavesurfer.current || !isLoaded) return;
 
     if (isPlaying) {
+      // Top priority: Immediate hard stop
       wavesurfer.current.pause();
       setIsPlaying(false);
       onPauseSolo();
     } else {
+      if (onPlayStart) onPlayStart();
       onPlaySolo(stem.stem);
       try {
         const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
@@ -285,6 +302,7 @@ function StemCard({
 
   const handleStop = () => {
     if (!wavesurfer.current) return;
+    // Top priority: Absolute immediate pause
     wavesurfer.current.pause();
     const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
     isSeekingRef.current = true;
@@ -442,7 +460,7 @@ function StemCard({
   );
 }
 
-export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
+export default function StemMixer({ stems, taskId, activeSubRegion, forceStopSignal, onPlayStart }: Props) {
   const [activePlayingStem, setActivePlayingStem] = useState<string | null>(null);
   const [soloStem, setSoloStem] = useState<string | null>(null);
   const [mutedStems, setMutedStems] = useState<string[]>([]);
@@ -458,6 +476,15 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
   const unregisterWsInstance = useCallback((name: string) => {
     delete wsInstances.current[name];
   }, []);
+
+  // Force Stop Signal handling
+  useEffect(() => {
+    if (forceStopSignal && forceStopSignal > 0) {
+      Object.values(wsInstances.current).forEach(ws => ws.pause());
+      setIsMasterPlaying(false);
+      setActivePlayingStem(null);
+    }
+  }, [forceStopSignal]);
 
   const handleToggleSolo = useCallback((stemName: string) => {
     setSoloStem(prev => prev === stemName ? null : stemName);
@@ -481,12 +508,13 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
   // Synchronized Multi-Track Master Playback Control
   const handleMasterPlay = async () => {
     if (isMasterPlaying) {
-      // Pause all instances
+      // Top priority: Immediate hard stop for all stems
       Object.values(wsInstances.current).forEach(ws => ws.pause());
       setIsMasterPlaying(false);
       return;
     }
 
+    if (onPlayStart) onPlayStart();
     setActivePlayingStem(null);
     const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
 
@@ -509,6 +537,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
 
   const handleMasterStop = () => {
     const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
+    // Top priority: Immediate hard stop
     Object.values(wsInstances.current).forEach(ws => {
       ws.pause();
       ws.setTime(startTime);
@@ -651,12 +680,14 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
               isSolo={isSolo}
               isMuted={isMuted}
               activeSubRegion={activeSubRegion}
+              forceStopSignal={forceStopSignal}
               onToggleSolo={handleToggleSolo}
               onToggleMute={handleToggleMute}
               onPlaySolo={handlePlaySolo}
               onPauseSolo={handlePauseSolo}
               registerWsInstance={registerWsInstance}
               unregisterWsInstance={unregisterWsInstance}
+              onPlayStart={onPlayStart}
             />
           );
         })}
