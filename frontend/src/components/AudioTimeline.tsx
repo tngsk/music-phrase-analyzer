@@ -22,9 +22,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [range, setRange] = useState({ start: 0, end: 10 })
   const rangeRef = useRef(range)
-  useEffect(() => {
-    rangeRef.current = range;
-  }, [range]);
 
   const [duration, setDuration] = useState<number>(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -39,6 +36,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
   const handleRangeChange = useCallback((start: number, end: number) => {
     const s = Math.max(0, Math.round(start * 100) / 100);
     const e = Math.max(s + 0.1, Math.round(end * 100) / 100);
+    rangeRef.current = { start: s, end: e };
     setRange({ start: s, end: e });
     if (onRangeChange) onRangeChange(s, e);
   }, [onRangeChange])
@@ -93,6 +91,11 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     const start = Math.max(0, Math.min(targetRange.start, dur));
     const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
 
+    // CRITICAL: Synchronously update rangeRef BEFORE triggering playback to prevent timeupdate early cutoff
+    rangeRef.current = { start, end };
+    setRange({ start, end });
+    if (onRangeChange) onRangeChange(start, end);
+
     if (activeRegion.current) {
       activeRegion.current.setOptions({ start, end });
     } else {
@@ -104,9 +107,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
         resize: true,
       });
     }
-
-    setRange({ start, end });
-    if (onRangeChange) onRangeChange(start, end);
 
     wavesurfer.current.setTime(start);
     if (targetRange.autoPlay) {
@@ -183,6 +183,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       const currentEnd = rangeRef.current.end;
       const currentStart = rangeRef.current.start;
 
+      // Ignore if current time is before the start (during seek)
+      if (currentTime < currentStart - 0.05) return;
+
       if (currentTime >= currentEnd) {
         if (isLoopingRef.current) {
           ws.setTime(currentStart);
@@ -236,8 +239,8 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       return;
     }
 
-    const start = range.start;
-    const end = range.end;
+    const start = rangeRef.current.start;
+    const end = rangeRef.current.end;
     const currentTime = wavesurfer.current.getCurrentTime();
 
     if (currentTime < start || currentTime >= end) {
@@ -256,7 +259,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     if (!wavesurfer.current) return;
     setIsLooping(false);
     wavesurfer.current.pause();
-    wavesurfer.current.setTime(range.start);
+    wavesurfer.current.setTime(rangeRef.current.start);
     setIsPlaying(false);
   };
 
@@ -268,6 +271,10 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     if (!wavesurfer.current || !regionsPlugin.current) return;
     const dur = duration || wavesurfer.current.getDuration() || 1;
     const safeEnd = Math.min(end, dur);
+
+    rangeRef.current = { start, end: safeEnd };
+    setRange({ start, end: safeEnd });
+    if (onRangeChange) onRangeChange(start, safeEnd);
 
     if (activeRegion.current) {
       activeRegion.current.setOptions({
@@ -283,7 +290,6 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
         resize: true,
       });
     }
-    handleRangeChange(start, safeEnd);
     wavesurfer.current.setTime(start);
   };
 
