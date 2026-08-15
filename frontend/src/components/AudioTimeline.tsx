@@ -65,6 +65,15 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingFile(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      if (file.type.startsWith('audio/') || file.name.match(/\.(wav|mp3|flac|m4a|ogg)$/i)) {
+        if (onFileSelect) {
+          onFileSelect(file);
+        }
+      }
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
