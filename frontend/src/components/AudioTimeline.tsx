@@ -33,6 +33,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     isLoopingRef.current = isLooping;
   }, [isLooping]);
 
+  // Guard flag to ignore spurious timeupdate events during seek
+  const isSeekingRef = useRef(false)
+
   const handleRangeChange = useCallback((start: number, end: number) => {
     const s = Math.max(0, Math.round(start * 100) / 100);
     const e = Math.max(s + 0.1, Math.round(end * 100) / 100);
@@ -91,7 +94,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     const start = Math.max(0, Math.min(targetRange.start, dur));
     const end = Math.min(Math.max(start + 0.2, targetRange.end), dur);
 
-    // CRITICAL: Synchronously update rangeRef BEFORE triggering playback to prevent timeupdate early cutoff
+    // CRITICAL: Synchronously update rangeRef BEFORE triggering playback
     rangeRef.current = { start, end };
     setRange({ start, end });
     if (onRangeChange) onRangeChange(start, end);
@@ -108,10 +111,21 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
       });
     }
 
+    // Set seeking guard to true so timeupdate won't immediately fire premature cutoff
+    isSeekingRef.current = true;
     wavesurfer.current.setTime(start);
+
     if (targetRange.autoPlay) {
-      wavesurfer.current.play().catch(console.error);
-      setIsPlaying(true);
+      // Small timeout ensures audio context buffer pointer has moved to new start position
+      setTimeout(() => {
+        if (wavesurfer.current) {
+          wavesurfer.current.play().catch(console.error);
+          setIsPlaying(true);
+          isSeekingRef.current = false;
+        }
+      }, 30);
+    } else {
+      isSeekingRef.current = false;
     }
   }, [targetRange, duration, onRangeChange]);
 
@@ -176,15 +190,25 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
 
     ws.on('play', () => setIsPlaying(true));
     ws.on('pause', () => setIsPlaying(false));
-    ws.on('finish', () => setIsPlaying(false));
+    ws.on('finish', () => {
+      if (isLoopingRef.current) {
+        ws.setTime(rangeRef.current.start);
+        ws.play().catch(console.error);
+      } else {
+        setIsPlaying(false);
+      }
+    });
 
     // Timeupdate boundary monitoring for precise region playback and looping
     ws.on('timeupdate', (currentTime) => {
+      if (!ws.isPlaying()) return; // Never process time boundaries if paused
+      if (isSeekingRef.current) return; // Skip boundary check during seek transition
+
       const currentEnd = rangeRef.current.end;
       const currentStart = rangeRef.current.start;
 
-      // Ignore if current time is before the start (during seek)
-      if (currentTime < currentStart - 0.05) return;
+      // Ignore if currentTime hasn't reached near start yet (stale audio frame)
+      if (currentTime < currentStart - 0.1) return;
 
       if (currentTime >= currentEnd) {
         if (isLoopingRef.current) {
@@ -244,7 +268,9 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
     const currentTime = wavesurfer.current.getCurrentTime();
 
     if (currentTime < start || currentTime >= end) {
+      isSeekingRef.current = true;
       wavesurfer.current.setTime(start);
+      setTimeout(() => { isSeekingRef.current = false; }, 30);
     }
 
     try {
@@ -397,7 +423,7 @@ export default function AudioTimeline({ onRangeChange, audioUrl, onFileSelect, t
               disabled={!isLoaded}
               className={`flex items-center gap-1.5 transition px-3 py-2 rounded-lg text-xs font-medium border ${
                 isLooping 
-                  ? 'bg-green-600/30 border-green-500 text-green-300' 
+                  ? 'bg-green-600/30 border-green-500 text-green-300 font-semibold' 
                   : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-700'
               }`}
             >

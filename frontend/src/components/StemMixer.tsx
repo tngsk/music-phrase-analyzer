@@ -110,6 +110,7 @@ function StemCard({
   const [duration, setDuration] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const isSeekingRef = useRef(false);
   const isDrum = stem.stem.toLowerCase() === 'drums';
 
   const cfg = STEM_CONFIG[stem.stem.toLowerCase()] || {
@@ -156,13 +157,15 @@ function StemCard({
         resize: false,
       });
       activeRegion.current = reg;
+      isSeekingRef.current = true;
       wavesurfer.current.setTime(activeSubRegion.startRel);
+      setTimeout(() => { isSeekingRef.current = false; }, 40);
     } else {
       activeRegion.current = null;
     }
   }, [activeSubRegion, isLoaded]);
 
-  // Solo playback mode: Pause if another stem or master is playing
+  // Solo playback mode: Pause if another stem is playing individually
   useEffect(() => {
     if (activePlayingStem && activePlayingStem !== stem.stem && isPlaying && !isMasterPlaying) {
       if (wavesurfer.current) {
@@ -206,30 +209,42 @@ function StemCard({
     ws.on('timeupdate', (time) => {
       setCurrentTime(time);
 
+      // CRITICAL: If paused or seeking, never execute loop / stop logic!
+      if (!ws.isPlaying() || isSeekingRef.current) return;
+
       // Boundary check for chord sub-region looping
       if (activeSubRegionRef.current) {
         const subEnd = activeSubRegionRef.current.endRel;
         const subStart = activeSubRegionRef.current.startRel;
 
+        if (time < subStart - 0.05) return;
+
         if (time >= subEnd) {
           if (isLoopingRef.current) {
+            isSeekingRef.current = true;
             ws.setTime(subStart);
             ws.play().catch(console.error);
+            setTimeout(() => { isSeekingRef.current = false; }, 40);
           } else {
             ws.pause();
+            isSeekingRef.current = true;
             ws.setTime(subStart);
             setIsPlaying(false);
             onPauseSolo();
+            setTimeout(() => { isSeekingRef.current = false; }, 40);
           }
         }
       }
     });
 
     ws.on('finish', () => {
+      if (!ws.isPlaying()) return;
       if (isLoopingRef.current) {
         const restartTime = activeSubRegionRef.current ? activeSubRegionRef.current.startRel : 0;
+        isSeekingRef.current = true;
         ws.setTime(restartTime);
         ws.play().catch(console.error);
+        setTimeout(() => { isSeekingRef.current = false; }, 40);
       } else {
         setIsPlaying(false);
         onPauseSolo();
@@ -256,7 +271,9 @@ function StemCard({
         const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
         const curTime = wavesurfer.current.getCurrentTime();
         if (activeSubRegion && (curTime < startTime || curTime >= activeSubRegion.endRel)) {
+          isSeekingRef.current = true;
           wavesurfer.current.setTime(startTime);
+          setTimeout(() => { isSeekingRef.current = false; }, 40);
         }
         await wavesurfer.current.play();
         setIsPlaying(true);
@@ -270,9 +287,11 @@ function StemCard({
     if (!wavesurfer.current) return;
     wavesurfer.current.pause();
     const startTime = activeSubRegion ? activeSubRegion.startRel : 0;
+    isSeekingRef.current = true;
     wavesurfer.current.setTime(startTime);
     setIsPlaying(false);
     onPauseSolo();
+    setTimeout(() => { isSeekingRef.current = false; }, 40);
   };
 
   const toggleLoop = () => {
@@ -319,7 +338,7 @@ function StemCard({
           <button
             type="button"
             onClick={() => onToggleSolo(stem.stem)}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold border transition ${
+            className={`px-2 py-0.5 rounded text-[11px] font-bold border transition cursor-pointer ${
               isSolo 
                 ? 'bg-amber-500 text-gray-950 border-amber-400 shadow-xs' 
                 : 'bg-gray-800 text-gray-400 hover:text-amber-300 border-gray-700'
@@ -332,7 +351,7 @@ function StemCard({
           <button
             type="button"
             onClick={() => onToggleMute(stem.stem)}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold border transition ${
+            className={`px-2 py-0.5 rounded text-[11px] font-bold border transition cursor-pointer ${
               isMuted 
                 ? 'bg-red-600 text-white border-red-500 shadow-xs' 
                 : 'bg-gray-800 text-gray-400 hover:text-red-300 border-gray-700'
@@ -362,10 +381,10 @@ function StemCard({
             type="button"
             onClick={handleTogglePlay}
             disabled={!isLoaded || isMuted}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shadow transition ${
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold shadow transition cursor-pointer ${
               isPlaying
                 ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                : 'bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-700'
+                : 'bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-700 disabled:cursor-not-allowed'
             }`}
           >
             {isPlaying ? <Pause size={13} /> : <Play size={13} />}
@@ -376,7 +395,7 @@ function StemCard({
             type="button"
             onClick={handleStop}
             disabled={!isLoaded}
-            className="p-1 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md transition"
+            className="p-1 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-md transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             title="停止"
           >
             <Square size={13} />
@@ -385,9 +404,9 @@ function StemCard({
           <button
             type="button"
             onClick={toggleLoop}
-            className={`p-1 rounded-md text-xs border transition ${
+            className={`p-1 rounded-md text-xs border transition cursor-pointer ${
               isLooping
-                ? 'bg-green-600/30 border-green-500 text-green-300'
+                ? 'bg-green-600/30 border-green-500 text-green-300 font-semibold'
                 : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200'
             }`}
             title="ループ再生"
@@ -401,7 +420,7 @@ function StemCard({
           <button
             type="button"
             onClick={() => handleDownload(stem.audio_url, `${stem.stem}.wav`)}
-            className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 border border-gray-600/80 text-gray-200 text-[11px] py-1 px-2 rounded-md transition"
+            className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 border border-gray-600/80 text-gray-200 text-[11px] py-1 px-2 rounded-md transition cursor-pointer"
             title="WAV音声をダウンロード"
           >
             <Download size={11} />
@@ -411,7 +430,7 @@ function StemCard({
           <button
             type="button"
             onClick={() => handleDownload(stem.midi_url, `${stem.stem}.mid`)}
-            className="flex items-center gap-1 bg-purple-900/40 hover:bg-purple-800/60 border border-purple-600/50 text-purple-300 text-[11px] py-1 px-2 rounded-md transition"
+            className="flex items-center gap-1 bg-purple-900/40 hover:bg-purple-800/60 border border-purple-600/50 text-purple-300 text-[11px] py-1 px-2 rounded-md transition cursor-pointer"
             title="MIDIファイルをダウンロード"
           >
             <Music2 size={11} />
@@ -533,7 +552,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
           <button
             type="button"
             onClick={handleMasterPlay}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow cursor-pointer ${
               isMasterPlaying
                 ? 'bg-amber-600 hover:bg-amber-500 text-white animate-pulse'
                 : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white'
@@ -547,7 +566,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
           <button
             type="button"
             onClick={handleMasterStop}
-            className="p-1.5 text-gray-300 hover:text-white bg-gray-900 border border-gray-700 rounded-lg transition"
+            className="p-1.5 text-gray-300 hover:text-white bg-gray-900 border border-gray-700 rounded-lg transition cursor-pointer"
             title="全パート巻き戻し停止"
           >
             <Square size={13} />
@@ -556,7 +575,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
           <button
             type="button"
             onClick={() => setIsMasterLooping(!isMasterLooping)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border transition ${
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border transition cursor-pointer ${
               isMasterLooping
                 ? 'bg-green-600/30 border-green-500 text-green-300 font-semibold'
                 : 'bg-gray-900 border-gray-700 text-gray-400 hover:text-gray-200'
@@ -571,7 +590,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
             <button
               type="button"
               onClick={handleResetSoloMute}
-              className="text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/60 border border-amber-700/60 px-2 py-1 rounded-md transition"
+              className="text-[11px] text-amber-300 hover:text-amber-200 bg-amber-950/60 border border-amber-700/60 px-2 py-1 rounded-md transition cursor-pointer"
               title="SoloとMuteを全てリセット"
             >
               Reset Solo/Mute
@@ -596,7 +615,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
             <button
               type="button"
               onClick={() => handleDownload(`http://localhost:8000/export/midi/${taskId}/all`, 'all_stems.mid')}
-              className="flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-600/60 text-purple-200 text-xs font-semibold px-2.5 py-1 rounded-md shadow-xs transition"
+              className="flex items-center gap-1 bg-purple-900/50 hover:bg-purple-800/60 border border-purple-600/60 text-purple-200 text-xs font-semibold px-2.5 py-1 rounded-md shadow-xs transition cursor-pointer"
               title="全パートのMIDIを1つのファイルに統合してダウンロード"
             >
               <Music2 size={13} />
@@ -606,7 +625,7 @@ export default function StemMixer({ stems, taskId, activeSubRegion }: Props) {
             <button
               type="button"
               onClick={() => handleDownload(`http://localhost:8000/export/audio/${taskId}/sliced`, 'sliced_phrase.wav')}
-              className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium px-2.5 py-1 rounded-md border border-gray-600/80 transition"
+              className="flex items-center gap-1 bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium px-2.5 py-1 rounded-md border border-gray-600/80 transition cursor-pointer"
               title="切り出したフレーズ全体のWAV音声をダウンロード"
             >
               <Download size={13} />
